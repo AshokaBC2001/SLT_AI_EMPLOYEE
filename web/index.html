@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SLT AI Employee</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230C2A5E'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%234CC764'/%3E%3C/svg%3E">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo" aria-hidden="true"><svg class="ic"><use href="icons.svg#i-bot"/></svg></div>
+      <div class="brand-name">SLT AI Employee<small>Intern hiring</small></div>
+    </div>
+    <div class="page-title" id="page-title">Dashboard</div>
+    <div class="top-right">
+      <div class="model-pill" id="model-pill" title="The local model server"><i class="dot"></i><span>Model: checking</span></div>
+      <button class="bell" id="bell" title="Things that need you" aria-label="Things that need you">
+        <svg class="ic"><use href="icons.svg#i-bell"/></svg><span class="badge" id="bell-badge" hidden>0</span>
+      </button>
+      <div class="user">
+        <button class="user-btn" id="user-btn" aria-haspopup="true" aria-expanded="false">
+          <div class="avatar" id="avatar">HR</div>
+          <div class="who"><b id="who-name">HR Officer</b><span id="who-sub">Reviewer</span></div>
+          <svg class="ic sm"><use href="icons.svg#i-chevron-down"/></svg>
+        </button>
+        <div class="menu" id="role-menu" hidden>
+          <div class="menu-title">Use the system as</div>
+          <button data-role="hr"><div class="avatar" style="width:36px;height:36px;background:#E0EAFF;color:#1D4ED8">HR</div>
+            <div><b>HR Officer</b><small>Adds CVs, reviews, releases emails</small></div><svg class="ic sm tick" data-tick="hr"><use href="icons.svg#i-check"/></svg></button>
+          <button data-role="interviewer"><div class="avatar" style="width:36px;height:36px;background:#E2FBE8;color:#15803D">IN</div>
+            <div><b>Interviewer</b><small>Interviews and enters the result</small></div><svg class="ic sm tick" data-tick="interviewer"><use href="icons.svg#i-check"/></svg></button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <nav class="sidebar" id="sidebar" aria-label="Pages"></nav>
+
+  <main class="main"><div class="wrap" id="view"></div></main>
+
+  <footer class="footer"><span>&copy; 2026 SLT AI Employee &middot; Intern project prototype</span><b>Version 1.0</b></footer>
+
+  <dialog id="dialog"><div class="dlg" id="dialog-body"></div></dialog>
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

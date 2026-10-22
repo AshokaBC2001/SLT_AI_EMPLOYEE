@@ -1,0 +1,22 @@
+Sanduni Fernando
+sanduni.fernando@example.com | +94 77 000 3344 | Kandy
+
+Summary
+Software engineering undergraduate interested in automation, cloud and reliable deployments.
+
+Education
+BSc (Hons) in Software Engineering, University of Kelaniya (2022 - 2026)
+
+Skills
+Linux, Bash, Docker, Git, CI/CD with GitHub Actions, Jenkins, AWS Cloud, Nginx, Python
+
+Projects
+- CI/CD pipeline for a university web app: GitHub Actions builds Docker images and deploys to an AWS server
+- Home lab: Linux server with Docker containers, Nginx reverse proxy and monitoring with Grafana
+- Bash scripts to automate daily backups of a MySQL database
+
+Experience
+- IT support intern, ABC Logistics (3 months): maintained Linux servers and user accounts
+
+Certifications
+AWS Cloud Practitioner

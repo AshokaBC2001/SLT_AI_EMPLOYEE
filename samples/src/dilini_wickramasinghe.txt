@@ -1,0 +1,19 @@
+Dilini Wickramasinghe
+dilini.w@example.com | +94 75 000 9900 | Negombo
+
+Profile
+Mobile app developer in my final year, building Flutter apps for Android and iOS.
+
+Education
+BSc (Hons) in Information Technology, SLIIT (2022 - 2026)
+
+Technical Skills
+Flutter, Dart, Firebase, REST API, Git, Mobile UI design, Provider state management, SQLite, Android
+
+Projects
+- Campus bus tracker: Flutter app with Firebase Auth, Firestore and Google Maps
+- Recipe app: Flutter and Dart with a REST API backend and offline SQLite cache
+- Expense tracker with Provider state management, published on the Play Store
+
+Experience
+- Freelance mobile developer (6 months): built two small Flutter apps for local shops

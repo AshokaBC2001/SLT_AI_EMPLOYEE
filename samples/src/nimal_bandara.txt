@@ -1,0 +1,18 @@
+Nimal Bandara
+nimal.bandara@example.com | +94 76 000 7788 | Kurunegala
+
+Profile
+Motivated IT student looking for an internship to gain industry experience.
+
+Education
+Higher National Diploma in Information Technology, SLIATE (2024 - 2026)
+
+Skills
+Python (basic), HTML, CSS, Microsoft Excel, Communication, Teamwork
+
+Projects
+- Personal website made with HTML and CSS
+- Simple calculator program in Python
+
+Interests
+Cricket, music

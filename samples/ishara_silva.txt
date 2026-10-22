@@ -1,0 +1,18 @@
+Ishara Silva
+ishara.silva@example.com | +94 78 000 4455 | Kalutara
+
+Profile
+Computer engineering student who enjoys working with servers and open-source tools.
+
+Education
+BSc (Hons) in Computer Engineering, University of Peradeniya (2022 - 2026)
+
+Skills
+Linux, Git, Docker, Python, MySQL, Networking basics
+
+Projects
+- Ran a small web app in a Docker container on a Linux virtual machine for a university course
+- Library management system in Python and MySQL
+
+Activities
+- Member of the university open-source club

@@ -1,0 +1,19 @@
+Ruwan Jayasinghe
+ruwan.jayasinghe@example.com | +94 70 000 5566 | Galle
+
+About Me
+Computer science student who likes taking machine learning models from notebooks to production.
+
+Education
+BSc (Hons) in Computer Science, University of Ruhuna (2022 - 2026)
+
+Skills
+Python, Machine Learning, Docker, MLflow, DVC, Git, CI/CD, FastAPI, Airflow, Scikit-learn
+
+Projects
+- Fake news classifier served with FastAPI in Docker, experiments tracked with MLflow, data versioned with DVC
+- Airflow pipeline that retrains a sales prediction model every week and checks for data drift
+- GitHub Actions CI/CD that tests and builds the model serving image
+
+Experience
+- Research assistant (part time): prepared datasets and trained models for a university project

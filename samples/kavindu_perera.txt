@@ -1,0 +1,23 @@
+Kavindu Perera
+kavindu.perera@example.com | +94 71 000 1122 | Colombo
+
+Profile
+Final-year data science student who enjoys building machine learning models.
+
+Education
+BSc (Hons) in Data Science, Sri Lanka Technological Campus (2023 - 2027)
+G.C.E. Advanced Level, Physical Science stream
+
+Technical Skills
+Python, Pandas, NumPy, Scikit-learn, Machine Learning, Deep Learning, TensorFlow, SQL, Git
+
+Projects
+- Customer churn prediction: built a classification model with Scikit-learn and Pandas (accuracy 87%)
+- Sinhala handwritten character recognition: a deep learning model with TensorFlow and a CNN
+- Movie recommender: collaborative filtering with Python and NumPy
+
+Experience
+- Data analytics volunteer, university student union: cleaned survey datasets with Pandas
+
+Languages
+English, Sinhala

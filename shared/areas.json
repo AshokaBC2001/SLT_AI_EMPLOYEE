@@ -1,0 +1,34 @@
+[
+  {
+    "name": "AI/ML",
+    "description": "Builds and tests machine learning and AI models, from data preparation to evaluation.",
+    "required_skills": ["Python", "Machine Learning", "Pandas", "NumPy", "Scikit-learn", "Deep Learning"],
+    "preferred_skills": ["TensorFlow", "PyTorch", "NLP", "Computer Vision", "SQL", "Statistics"],
+    "keywords": ["model", "classification", "prediction", "neural network", "dataset", "accuracy", "regression"],
+    "checklist": ["Give access to the AI/ML lab GPU server", "Share the data privacy guidelines"]
+  },
+  {
+    "name": "DevOps",
+    "description": "Builds and runs the pipelines and servers that deliver software: CI/CD, containers, cloud and monitoring.",
+    "required_skills": ["Linux", "Docker", "Git", "CI/CD", "Bash", "Cloud"],
+    "preferred_skills": ["Kubernetes", "Jenkins", "GitHub Actions", "Terraform", "Ansible", "AWS", "Nginx"],
+    "keywords": ["pipeline", "deployment", "server", "container", "infrastructure", "monitoring", "automation"],
+    "checklist": ["Give read-only access to the staging servers", "Share the change management process"]
+  },
+  {
+    "name": "MLOps",
+    "description": "Puts machine learning models into production: tracking, versioning, serving and monitoring models.",
+    "required_skills": ["Python", "Machine Learning", "Docker", "MLflow", "Git", "CI/CD"],
+    "preferred_skills": ["DVC", "Airflow", "FastAPI", "Kubernetes", "Model Monitoring", "AWS"],
+    "keywords": ["model deployment", "pipeline", "experiment tracking", "serving", "versioning", "drift"],
+    "checklist": ["Give access to the model registry", "Share the data privacy guidelines"]
+  },
+  {
+    "name": "Flutter",
+    "description": "Builds mobile apps for Android and iOS with Flutter and Dart.",
+    "required_skills": ["Flutter", "Dart", "Firebase", "REST API", "Git", "Mobile UI"],
+    "preferred_skills": ["Android", "iOS", "State Management", "Provider", "Bloc", "SQLite", "FlutterFlow"],
+    "keywords": ["mobile app", "android", "ios", "app", "screens", "play store"],
+    "checklist": ["Give access to the test devices", "Share the mobile design guidelines"]
+  }
+]
