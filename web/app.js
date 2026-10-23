@@ -19,8 +19,8 @@ if (!["hr", "interviewer"].includes(ROLE)) ROLE = "hr";
 let STATE = null;
 let lastHTML = "";
 let current = { page: "", arg: "" };
-const UI = { showCv: false, showRuns: false, editDraft: null, editEmail: false, candFilter: "open", candQuery: "",
-             repliesTab: "waiting", files: [], uploadResults: null, areas: null };
+const UI = { showCv: false, showRuns: false, editDraft: null, editEmail: false, candFilter: "selected", candQuery: "",
+             repliesTab: "waiting", showAll: "", files: [], uploadResults: null, areas: null };
 
 async function api(path, { method = "GET", body, form } = {}) {
   const opt = { method, headers: { "X-Role": ROLE } };
@@ -224,7 +224,8 @@ function mailBlock(d, { showCandidate = false } = {}) {
 // ================================================================ HR officer pages
 async function pDashboard() {
   title("Dashboard");
-  const s = STATE = await api("/api/state");
+  const [s, all] = await Promise.all([api("/api/state"), api("/api/candidates")]);
+  STATE = s;
   renderTop(); renderFrame();
   const t = s.tiles;
   const working = Object.values(s.team).find((x) => x.state === "working");
@@ -238,16 +239,21 @@ async function pDashboard() {
     ["blue", "Needs your review", "clipboard-check", t.review, "Decisions and notes", "#/review"],
     ["indigo", "Emails to release", "mail", t.release, "Drafted by the AI team", "#/replies"],
     ["purple", "In interview", "calendar-check", t.interview, "Waiting for a result", "#/candidates/interview"],
-    ["green", "Selected", "award", t.selected, "Work IDs issued", "#/candidates/closed"],
+    ["green", "Selected", "award", t.selected, "Work IDs issued", "#/candidates/selected"],
   ].map(([c, l, ic, n, cap, href]) => `<a class="tile ${c}" href="${href}"><div class="t-head"><div class="t-icon">${icon(ic)}</div>${esc(l)}</div>
       <div class="t-num">${esc(n)}</div><div class="t-cap">${esc(cap)}</div><svg class="ic t-mark" aria-hidden="true"><use href="icons.svg#i-${ic}"/></svg></a>`).join("");
   const team = Object.entries(s.team).map(([k, e], i) => `<div class="row"><div class="emp-icon e${i}" style="width:42px;height:42px;border-radius:12px">${icon(["user-round-search", "calendar-check", "id-card", "activity"][i])}</div>
       <div class="grow"><div class="title">${esc(e.name)}</div><div class="sub">${e.state === "working" ? esc(e.doing) : e.last_run ? "Last run " + esc(fmtTime(e.last_run)) + " - " + esc(e.last_note) : "Waiting for work"}</div></div>
       ${s.paused ? `<span class="chip gray">Paused</span>` : e.state === "working" ? `<span class="chip blue"><i class="dot busy"></i>Working</span>` : `<span class="chip green">Ready</span>`}</div>`).join("");
-  const max = Math.max(1, ...s.areas_chart.map((a) => a.count));
-  const chart = s.areas_chart.length ? `<div class="chart">${s.areas_chart.map((a) => `<div class="col"><b>${esc(a.count)}</b><i style="height:${Math.round((a.count / max) * 150) + 6}px"></i></div>`).join("")}</div>
-      <div class="chart-labels">${s.areas_chart.map((a) => `<span>${esc(a.area)}</span>`).join("")}</div>` : empty("No areas yet.");
-  const recent = s.recent.length ? s.recent.slice(0, 6).map((r) => `<${r.app_no ? `a href="#/candidate/${encodeURIComponent(r.app_no)}"` : "div"} class="row">${dateBox(r.at)}
+  // Selected = passed the interview, counted per area
+  const passed = {};
+  all.filter((c) => c.result === "Pass").forEach((c) => { passed[c.area] = (passed[c.area] || 0) + 1; });
+  const areaNames = s.areas_chart.map((a) => a.area);
+  Object.keys(passed).forEach((a) => { if (!areaNames.includes(a)) areaNames.push(a); });
+  const totalPassed = Object.values(passed).reduce((x, y) => x + y, 0);
+  const areaNums = areaNames.length ? `<div class="num-grid"><a class="num-box total" href="#/candidates/selected"><b>${esc(totalPassed)}</b><span>All areas</span></a>
+      ${areaNames.map((a) => `<div class="num-box"><b>${esc(passed[a] || 0)}</b><span>${esc(a)}</span></div>`).join("")}</div>` : empty("No areas yet.");
+  const recent = s.recent.length ? s.recent.slice(0, 5).map((r) => `<${r.app_no ? `a href="#/candidate/${encodeURIComponent(r.app_no)}"` : "div"} class="row">${dateBox(r.at)}
       <div class="grow"><div class="title">${esc(r.text)}</div><div class="sub">${actorTag(r.actor)} ${r.app_no ? esc(r.app_no) + " - " + esc(r.name || "") : ""} - ${esc(fmtTime(r.at))}</div></div></${r.app_no ? "a" : "div"}>`).join("") : empty("Nothing has happened yet.");
   const brief = s.brief ? `<p style="margin:0 0 12px;line-height:1.65">${esc(s.brief.text)}</p><div class="actions">${sourceTag("Chief of staff - " + s.brief.written_by)}<span class="small muted">${esc(fmtTime(s.brief.created_at))}</span></div>`
     : `<p class="muted">The Chief of staff writes a brief every morning at 08:00.</p>`;
@@ -259,13 +265,12 @@ async function pDashboard() {
     ${modelBanner() ? `<div style="margin-top:24px">${modelBanner()}</div>` : ""}
     <div style="margin-top:24px">${next}</div>
     <div class="tiles" style="margin-top:24px">${tiles}</div>
-    <div class="grid side"><div class="stack">
-        <div class="card">${cardHead("bot", "purple", "AI team", `<a class="btn small" href="#/team">Open AI team</a>`)}<div class="rows">${team}</div></div>
-        <div class="card">${cardHead("chart-column", "blue", "Candidates by area")}${chart}</div>
-      </div><div class="stack">
-        <div class="card">${cardHead("message-square-text", "green", "Morning brief", `<button class="btn small" data-act="brief">${icon("refresh-cw", "sm")} Write brief now</button>`)}${brief}</div>
-        <div class="card">${cardHead("activity", "purple", "Recent activity")}<div class="rows">${recent}</div></div>
-      </div></div>`);
+    <div class="card">${cardHead("message-square-text", "green", "Morning brief", `<button class="btn small" data-act="brief">${icon("refresh-cw", "sm")} Write brief now</button>`)}${brief}</div>
+    <div class="card">${cardHead("award", "green", "Selected candidates by area", `<span class="hint">Passed the interview</span>`)}${areaNums}</div>
+    <div class="grid two">
+      <div class="card">${cardHead("activity", "purple", "Recent activity")}<div class="rows">${recent}</div></div>
+      <div class="card">${cardHead("bot", "purple", "AI team", `<a class="btn small" href="#/team">Open AI team</a>`)}<div class="rows">${team}</div></div>
+    </div>`);
 }
 
 async function pAdd() {
@@ -275,29 +280,33 @@ async function pAdd() {
   const resultRows = results ? results.map((r) => r.ok
     ? `<a class="row" href="#/candidate/${encodeURIComponent(r.app_no)}"><span class="chip green">${icon("check", "sm")} Added</span><div class="grow"><div class="title">${esc(r.file)}</div><div class="sub">Application number ${esc(r.app_no)}</div></div>${icon("arrow-right", "sm")}</a>`
     : `<div class="row"><span class="chip red">${icon("x", "sm")} Not added</span><div class="grow"><div class="title">${esc(r.file)}</div><div class="sub">${esc(r.reason)}</div></div></div>`).join("") : "";
-  setView(`<div class="grid side"><div class="stack">
-      <div class="card">${cardHead("file-plus", "blue", "Add CVs")}
-        <label class="drop" id="drop" for="file-input">${icon("upload")}<div style="font-weight:600;margin-top:6px">Drop CV files here, or click to choose</div>
-          <div class="small muted">PDF, Word (.docx) or text files, up to 5 MB each. You can add several at once.</div></label>
-        <input type="file" id="file-input" accept=".pdf,.docx,.txt" multiple hidden>
-        ${files.length ? `<div class="rows" style="margin-top:16px">${files.map((f, i) => `<div class="row">${icon("file-text")}<div class="grow"><div class="title">${esc(f.name)}</div><div class="sub">${Math.ceil(f.size / 1024)} KB</div></div><button class="btn small" data-act="remove-file" data-i="${i}">${icon("x", "sm")} Remove</button></div>`).join("")}</div>` : ""}
-        <div class="form-row" style="margin-top:18px"><label for="cv-email">Student's email (optional)</label>
-          <input type="email" id="cv-email" placeholder="${files.length > 1 ? "Only for a single CV" : "name@example.com"}" ${files.length > 1 ? "disabled" : ""}>
-          <div class="help">If you type it, replies use this address. If you leave it empty, the Recruiter reads it from the CV and you confirm it.</div></div>
-        <div class="actions" style="margin-top:20px"><button class="btn primary" data-act="upload" ${files.length ? "" : "disabled"}>${icon("upload")} Add ${files.length > 1 ? files.length + " CVs" : "CV"}</button>
-          ${files.length ? `<button class="btn" data-act="clear-files">Clear</button>` : ""}</div>
+  setView(`<div class="card">${cardHead("file-plus", "blue", "Add CVs")}
+      <div class="add-grid">
+        <div>
+          <label class="drop" id="drop" for="file-input">${icon("upload")}<div class="drop-title">Drop CV files here, or click to choose</div>
+            <div class="small muted">PDF, Word (.docx) or text files, up to 5 MB each. You can add several at once.</div></label>
+          <input type="file" id="file-input" accept=".pdf,.docx,.txt" multiple hidden>
+          ${files.length ? `<div class="rows" style="margin-top:16px">${files.map((f, i) => `<div class="row">${icon("file-text")}<div class="grow"><div class="title">${esc(f.name)}</div><div class="sub">${Math.ceil(f.size / 1024)} KB</div></div><button class="btn small" data-act="remove-file" data-i="${i}">${icon("x", "sm")} Remove</button></div>`).join("")}</div>` : ""}
+        </div>
+        <div class="add-side">
+          <div class="form-row"><label for="cv-email">Student's email (optional)</label>
+            <input type="email" id="cv-email" placeholder="${files.length > 1 ? "Only for a single CV" : "name@example.com"}" ${files.length > 1 ? "disabled" : ""}>
+            <div class="help">If you type it, replies use this address. If you leave it empty, the Recruiter reads it from the CV and you confirm it.</div></div>
+          <div class="small muted" style="margin-top:16px">${files.length ? `${files.length} file(s) chosen.` : "No files chosen yet."}</div>
+          <div class="actions" style="margin-top:12px"><button class="btn primary" data-act="upload" ${files.length ? "" : "disabled"}>${icon("upload")} Add ${files.length > 1 ? files.length + " CVs" : "CV"}</button>
+            ${files.length ? `<button class="btn" data-act="clear-files">Clear</button>` : ""}</div>
+        </div>
       </div>
+    </div>
       ${results ? `<div class="card">${cardHead("list-checks", "green", "Result")}<div class="rows">${resultRows}</div></div>` : ""}
-    </div><div class="stack">
       <div class="card">${cardHead("info", "purple", "What happens next")}<div class="steps">
         <div><div><b>Recruiter</b><div class="small muted">Reads the CV, chooses the area and scores the match. Every fact is checked against the CV.</div></div></div>
         <div><div><b>You</b><div class="small muted">Decide borderline and low scores, choose areas the AI is unsure about.</div></div></div>
         <div><div><b>Coordinator</b><div class="small muted">Books an interview slot, prepares questions and drafts the invitation for you to release.</div></div></div>
         <div><div><b>Interviewer</b><div class="small muted">Does the interview and enters Pass, Fail or Hold.</div></div></div>
         <div><div><b>Onboarding</b><div class="small muted">Issues the 4-digit work ID and drafts the acceptance email for you to release.</div></div></div></div></div>
-      <div class="card">${cardHead("sparkles", "green", "Try it with sample CVs")}<p class="muted small" style="margin-top:0">Six made-up students in PDF, Word and text files, for demos and testing.</p>
-        <button class="btn" data-act="samples">${icon("users")} Load the sample CVs</button></div>
-    </div></div>`);
+      <div class="card">${cardHead("sparkles", "green", "Try it with sample CVs")}<p class="muted small" style="margin-top:0">Seven made-up students in PDF, Word and text files, for demos and testing.</p>
+        <button class="btn" data-act="samples">${icon("users")} Load the sample CVs</button></div>`);
   const input = $("#file-input");
   input.onchange = () => { addFiles(input.files); input.value = ""; };
   const drop = $("#drop");
@@ -312,11 +321,13 @@ function addFiles(list) {
   pAdd();
 }
 
-const FILTERS = [["open", "Open"], ["review", "Needs you"], ["release", "Emails to release"], ["interview", "In interview"], ["new", "New"], ["closed", "Closed"], ["", "All"]];
+const FILTERS = [["selected", "Selected candidates"], ["", "All"], ["new", "New"], ["interview", "In interview"], ["closed", "Closed"], ["review", "Needs you"], ["release", "Emails to release"]];
 async function pCandidates(arg) {
   title("Candidates");
   if (arg !== undefined && arg !== "" && FILTERS.some((f) => f[0] === arg)) UI.candFilter = arg;
-  const rows = await api(`/api/candidates?status=${encodeURIComponent(UI.candFilter)}`);
+  const selected = UI.candFilter === "selected";
+  let rows = await api(`/api/candidates?status=${selected ? "" : encodeURIComponent(UI.candFilter)}`);
+  if (selected) rows = rows.filter((c) => c.result === "Pass");   // passed the interview
   const q = UI.candQuery.toLowerCase();
   const shown = q ? rows.filter((c) => [c.name, c.app_no, c.area, c.email].join(" ").toLowerCase().includes(q)) : rows;
   const body = shown.length ? `<table class="list"><thead><tr><th>Application</th><th>Student</th><th>Area</th><th>Score</th><th>Status</th><th>Next</th></tr></thead><tbody>
@@ -327,7 +338,7 @@ async function pCandidates(arg) {
       <td><b class="mono" style="color:var(--${scoreColor(c.score)}-ink, var(--muted))">${c.score == null ? "-" : esc(c.score)}</b></td>
       <td>${chip(c)} ${c.open_flags ? `<span class="chip amber" title="Notes to check">${icon("triangle-alert", "sm")}${esc(c.open_flags)}</span>` : ""}</td>
       <td class="small muted">${esc(c.next_actor || (c.outcome || "Done"))}</td></tr>`).join("")}</tbody></table>`
-    : empty(rows.length ? "No candidate matches your search." : "No candidates here.", "users");
+    : empty(rows.length ? "No candidate matches your search." : selected ? "No one has passed an interview yet." : "No candidates here.", "users");
   setView(`<div class="card">${cardHead("users", "blue", "Candidates", `<a class="btn primary" href="#/add">${icon("file-plus")} Add CV</a>`)}
     <div class="filters"><div class="seg">${FILTERS.map(([k, l]) => `<button class="${UI.candFilter === k ? "on" : ""}" data-act="filter" data-f="${k}">${esc(l)}</button>`).join("")}</div>
     <div class="search">${icon("search", "sm")}<input type="search" id="cand-q" placeholder="Search name, number, area" value="${esc(UI.candQuery)}"></div></div>${body}</div>`);
@@ -431,12 +442,12 @@ async function pReview() {
   const r = await api("/api/review");
   const total = r.decisions.length + r.notes.length;
   setView(`${total ? banner("amber", "clipboard-check", `${total} item(s) need you.`, " Decisions first, then quick checks.") : banner("green", "circle-check", "The review queue is empty.", " Nothing needs a decision right now.")}
+    <div class="card">${cardHead("mail", "blue", "Emails waiting for release")}
+      <div class="row"><div class="grow"><div class="title">${esc(r.replies_waiting)} email(s) waiting for your release</div><div class="sub">Invitations, replies and acceptance emails drafted by the AI team. Nothing reaches a student until you release it.</div></div><a class="btn" href="#/replies">Open Replies ${icon("arrow-right", "sm")}</a></div></div>
     <div class="grid two"><div class="stack">
       <div class="card">${cardHead("clipboard-check", "amber", "Decisions for you", `<span class="hint">${r.decisions.length}</span>`)}
         <div class="rows">${r.decisions.length ? r.decisions.map((c) => `<a class="row" href="#/candidate/${encodeURIComponent(c.app_no)}">${dateBox(c.updated_at)}
           <div class="grow"><div class="title">${esc(c.name)} <span class="small muted">${esc(c.app_no)}</span></div><div class="sub">${esc(c.reason)}</div></div>${chip(c)}${icon("arrow-right", "sm")}</a>`).join("") : empty("No decisions waiting.", "circle-check")}</div></div>
-      <div class="card">${cardHead("mail", "blue", "Emails waiting for release")}
-        <div class="row"><div class="grow"><div class="title">${esc(r.replies_waiting)} email(s)</div><div class="sub">Invitations, replies and acceptance emails drafted by the AI team.</div></div><a class="btn" href="#/replies">Open Replies ${icon("arrow-right", "sm")}</a></div></div>
     </div><div class="stack">
       <div class="card">${cardHead("triangle-alert", "amber", "Notes to check", `<span class="hint">${r.notes.length}</span>`)}
         ${r.notes.length ? r.notes.map((n) => `<div class="note">${icon("triangle-alert")}<div class="grow"><div><b>${esc(n.name)}</b> <a href="#/candidate/${encodeURIComponent(n.app_no)}">${esc(n.app_no)}</a></div><div>${esc(n.text)}</div><div class="small muted">${esc(n.by)} - ${esc(fmtTime(n.at))}</div></div>
@@ -523,18 +534,25 @@ async function pInterviews() {
   const r = await api("/api/interviews");
   const row = (c, click = true) => `<${click ? `a href="#/interview/${encodeURIComponent(c.app_no)}"` : "div"} class="row">${dateBox(c.interview_at || c.updated_at)}
     <div class="grow"><div class="title">${esc(c.name)} <span class="small muted">${esc(c.app_no)}</span></div><div class="sub">${icon("clock", "sm")} ${esc(c.interview_label || "-")} - ${esc(c.area)}${c.score != null ? " - score " + esc(c.score) : ""}</div></div>
-    ${c.result ? `<span class="chip ${c.result === "Pass" ? "green" : c.result === "Fail" ? "red" : "amber"}">${esc(c.result)}</span>` : chip(c)}${click ? icon("arrow-right", "sm") : ""}</${click ? "a" : "div"}>`;
+    ${c.result ? `<span class="chip ${c.result === "Pass" ? "green" : c.result === "Fail" ? "red" : "amber"}">${esc(c.result)}</span>` : click ? "" : `<span class="chip gray">Not released</span>`}${click ? icon("arrow-right", "sm") : ""}</${click ? "a" : "div"}>`;
+  const LIMIT = 4;
+  const list = (items, key, click, none, ic) => {
+    if (!items.length) return empty(none, ic);
+    const all = UI.showAll === key;
+    const rows = (all ? items : items.slice(0, LIMIT)).map((c) => row(c, click)).join("");
+    const btn = items.length > LIMIT ? `<button class="btn ghost small" data-act="show-all" data-k="${all ? "" : key}" style="margin-top:8px">${all ? "Show fewer" : "Show all " + items.length}</button>` : "";
+    return `<div class="rows">${rows}</div>${btn}`;
+  };
   setView(`${hero({ kicker: "Welcome back", name: "Interviewer", initialsText: "IN",
       chips: [`<span class="chip on">${icon("calendar-check", "sm")} ${r.waiting.length} waiting for your result</span>`, `<span class="chip">${icon("hourglass", "sm")} ${r.on_hold.length} on hold</span>`,
         `<span class="chip">${icon("shield-check", "sm")} Your result is final; the AI cannot change it</span>`] })}
     <div style="margin-top:24px">${r.waiting.length ? banner("amber", "calendar-check", `${r.waiting.length} interview(s) are waiting for your result.`, " Open one, do the interview and enter Pass, Fail or Hold.") : banner("green", "circle-check", "No results are waiting for you.", "")}</div>
-    <div class="grid two"><div class="stack">
-      <div class="card">${cardHead("calendar-check", "blue", "Waiting for your result")}<div class="rows">${r.waiting.map((c) => row(c)).join("") || empty("Nothing waiting.", "calendar-check")}</div></div>
-      <div class="card">${cardHead("hourglass", "amber", "On hold")}<div class="rows">${r.on_hold.map((c) => row(c)).join("") || empty("No one is on hold.", "hourglass")}</div></div>
-    </div><div class="stack">
-      <div class="card">${cardHead("mail", "gray", "Coming up", `<span class="hint">Invitation not released yet</span>`)}<div class="rows">${r.invitation_not_released.map((c) => row(c, false)).join("") || empty("None.", "mail")}</div></div>
-      <div class="card">${cardHead("list-checks", "green", "Your recent results")}<div class="rows">${r.done.map((c) => row(c, false)).join("") || empty("No results yet.", "list-checks")}</div></div>
-    </div></div>`);
+    <div class="grid two even">
+      <div class="card">${cardHead("calendar-check", "blue", "Waiting for your result", `<span class="hint">${r.waiting.length}</span>`)}${list(r.waiting, "waiting", true, "Nothing waiting.", "calendar-check")}</div>
+      <div class="card">${cardHead("mail", "gray", "Coming up", `<span class="hint">${r.invitation_not_released.length}, invitation not released yet</span>`)}${list(r.invitation_not_released, "coming", false, "None.", "mail")}</div>
+      <div class="card">${cardHead("hourglass", "amber", "On hold", `<span class="hint">${r.on_hold.length}</span>`)}${list(r.on_hold, "hold", true, "No one is on hold.", "hourglass")}</div>
+      <div class="card">${cardHead("list-checks", "green", "Your recent results")}${list(r.done, "done", false, "No results yet.", "list-checks")}</div>
+    </div>`);
 }
 
 async function pInterview(appNo) {
@@ -596,6 +614,7 @@ const ACTS = {
   "samples": () => act(async () => { const r = await api("/api/samples", { method: "POST" }); UI.uploadResults = r.results; return r; },
     (r) => `${r.results.filter((x) => x.ok).length} sample CV(s) added.`),
   "filter": (b) => { UI.candFilter = b.dataset.f; history.replaceState(null, "", "#/candidates"); lastHTML = ""; pCandidates(); },
+  "show-all": (b) => { UI.showAll = b.dataset.k; lastHTML = ""; render(); },
   "tab": (b) => { UI.repliesTab = b.dataset.t; lastHTML = ""; pReplies(); },
   "toggle-cv": () => { UI.showCv = !UI.showCv; lastHTML = ""; render(); },
   "toggle-runs": () => { UI.showRuns = !UI.showRuns; lastHTML = ""; render(); },
