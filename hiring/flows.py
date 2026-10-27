@@ -416,6 +416,9 @@ def _save_with_drafts(key: str, s: dict, fields: dict) -> bool:
             setattr(c, k, v)
         c.updated_at = db.now()
         for d in s.get("drafts", []):
+            for old in ses.scalars(select(db.Draft).where(
+                    db.Draft.candidate_id == c.id, db.Draft.kind == d["kind"], db.Draft.status == "waiting")):
+                old.status = "discarded"
             ses.add(db.Draft(candidate_id=c.id, kind=d["kind"], subject=d["subject"], body=d["body"],
                              status="waiting", written_by=d["written_by"], check_notes=d["check_notes"],
                              created_at=db.now()))
@@ -699,6 +702,30 @@ def run_chief(wait: bool = True) -> dict:
 def run_all_once(limit: int = 20) -> list[dict]:
     """Recruiter, then Coordinator, then Onboarding, each on everything waiting."""
     return [run_employee(k, limit=limit, wait=True) for k in ("recruiter", "coordinator", "onboarding")]
+
+
+def ask_candidate_cv(cid: int, cv_text: str, profile: dict, question: str) -> dict:
+    """Answer a user question grounded strictly in the candidate's CV text."""
+    started = time.time()
+    task = f"QUESTION:\n{question}\n\n" + _cv_block(cv_text)
+    try:
+        res = ask_checked(
+            "recruiter",
+            "ask-cv",
+            task,
+            lambda d: checks.check_cv_answer(d, cv_text),
+            lambda: tools.rule_answer_cv(question, cv_text, profile),
+        )
+        _record("recruiter", "ask-cv", cid, started, res, note=f"Q: {question[:60]}")
+        source = {
+            "ok": "AI (checked against the CV)",
+            "fixed": "AI (fixed after a CV check)",
+            "fallback": "CV search (rules fallback)",
+        }[res.how]
+        return {"question": question, "answer": res.value["answer"], "quotes": res.value["quotes"], "source": source}
+    except llm.ModelUnavailable:
+        val = tools.rule_answer_cv(question, cv_text, profile)
+        return {"question": question, "answer": val["answer"], "quotes": val["quotes"], "source": "CV search (rules)"}
 
 
 def start_background(fn, *args) -> None:

@@ -199,6 +199,86 @@ def best_area_by_rules(profile: dict, cv_text: str, areas: list) -> tuple[str, i
     return best
 
 
+def area_fit_matrix(profile: dict, cv_text: str, areas: list) -> list[dict]:
+    """Evaluate a candidate against all active areas and return a sorted comparison list."""
+    if not cv_text or not cv_text.strip():
+        return []
+    cv = CVText(cv_text)
+    rows: list[dict] = []
+    for a in areas:
+        total, _, gaps = score_cv(profile, cv_text, a)
+        if total is None:
+            continue
+        req = list(a.required_skills or [])
+        pref = list(a.preferred_skills or [])
+        found_req = [s for s in req if cv.has(s)]
+        found_pref = [s for s in pref if cv.has(s)]
+        rows.append({
+            "area": a.name,
+            "score": total,
+            "status": shortlist_status(total),
+            "matched_required": found_req,
+            "total_required": len(req),
+            "matched_preferred": found_pref,
+            "gaps": gaps[:4],
+        })
+    rows.sort(key=lambda r: (r["score"], len(r["matched_required"]), len(r["matched_preferred"])), reverse=True)
+    return rows
+
+
+QUESTION_STOP = {"what", "which", "where", "when", "who", "how", "why", "does", "did", "do", "has", "have",
+                 "had", "can", "could", "would", "should", "is", "are", "was", "were", "the", "this", "that",
+                 "student", "candidate", "applicant", "about", "tell", "me", "us", "any", "their", "his", "her",
+                 "show", "check", "list", "find", "mention", "mentioned", "cv", "resume"}
+
+
+def rule_answer_cv(question: str, cv_text: str, profile: dict | None = None) -> dict:
+    """Deterministic CV Q&A fallback that searches CV lines and profile facts."""
+    p = profile or {}
+    q_norm = norm(question)
+    keywords = [w for w in q_norm.split() if len(w) >= 2 and w not in QUESTION_STOP]
+    lines = [re.sub(r"^[\-•*●▪>]+\s*", "", ln).strip() for ln in (cv_text or "").splitlines() if len(ln.strip()) >= 8]
+    cv = CVText(cv_text)
+
+    if any(w in q_norm for w in ("summary", "summarize", "strength", "strengths", "overview", "highlight", "highlights")):
+        skills = (p.get("skills") or [])[:6]
+        edu = (p.get("education") or [])[:1]
+        projs = (p.get("projects") or [])[:2]
+        quotes = [x for x in (edu + projs + skills[:1]) if x and cv.has(x)][:3]
+        parts = []
+        if edu:
+            parts.append(f"Education: {edu[0]}.")
+        if skills:
+            parts.append(f"Key skills listed in the CV include {', '.join(skills)}.")
+        if projs:
+            parts.append(f"Notable project work: {projs[0]}.")
+        ans = " ".join(parts) if parts else "The CV lists the candidate's academic background, skills and projects."
+        return {"answer": ans, "quotes": quotes}
+
+    scored: list[tuple[int, str]] = []
+    for ln in lines:
+        ln_cv = CVText(ln)
+        hits = sum(1 for k in keywords if ln_cv.has(k))
+        if hits > 0:
+            scored.append((hits, ln))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    quotes = []
+    for _, ln in scored:
+        if ln not in quotes and cv.has(ln):
+            quotes.append(ln[:220])
+        if len(quotes) >= 3:
+            break
+    if quotes:
+        return {
+            "answer": f"Based on the CV, here is what is written regarding your question: {' '.join(quotes[:2])}",
+            "quotes": quotes,
+        }
+    return {
+        "answer": "This topic is not mentioned in the candidate's CV. Only facts explicitly written in the CV can be confirmed.",
+        "quotes": [],
+    }
+
+
 # ---- Interview slots -------------------------------------------------------------------
 def format_slot_label(iso: str) -> str:
     dt = datetime.fromisoformat(iso)

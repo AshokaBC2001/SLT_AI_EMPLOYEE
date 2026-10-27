@@ -59,7 +59,7 @@ def routines(key: str) -> list[dict]:
     if not base.exists():
         return out
     order = {
-        "recruiter": ["parse-cv", "duplicate-check", "choose-area", "score-match", "skill-gap", "shortlist"],
+        "recruiter": ["parse-cv", "duplicate-check", "choose-area", "score-match", "skill-gap", "shortlist", "ask-cv"],
         "coordinator": ["invite-and-slots", "prepare-questions", "reply-not-shortlisted", "update-register",
                         "reply-failed-or-hold"],
         "onboarding": ["issue-work-id", "draft-acceptance", "induction-checklist"],

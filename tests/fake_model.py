@@ -105,6 +105,12 @@ class FakeModel:
                               f"{f.get('waiting_for_interview_results', 0)} candidate(s) are waiting for an "
                               f"interview result. The AI employees read {f.get('last_24_hours', {}).get('cvs_read', 0)} "
                               f"CV(s) in the last 24 hours. Please check the Review queue first.")}
+        if routine == "ask-cv":
+            cv_text = _cv(text)
+            m = re.search(r"QUESTION:\n(.*?)\n\nCV TEXT:", text, flags=re.S)
+            question = m.group(1).strip() if m else ""
+            prof = tools.rule_profile(cv_text, _vocab())
+            return tools.rule_answer_cv(question, cv_text, prof)
         # drafts
         f = _block_json(text, "FACTS") or {}
         first = f.get("first_name", "there")
@@ -143,6 +149,9 @@ class FakeModel:
         if routine == "morning-brief":
             return json.dumps({"brief": "Good morning. 999 students applied today and 42 need you now. "
                                         "Everything else is fine and the team did a great job overall today."})
+        if routine == "ask-cv":
+            return json.dumps({"answer": "The candidate worked for 10 years at NASA.",
+                               "quotes": ["10 years as Principal Engineer at NASA"]})
         if routine == "parse-not-json":
             return "Sure! Here is the profile."
         return json.dumps({"subject": "Hello", "body": "Dear [Name], please come within 14 days. "

@@ -270,4 +270,33 @@ def check_brief(data: Any, facts: dict) -> tuple[str, list[str]]:
     extra = sorted({n.lstrip("0") or "0" for n in re.findall(r"\d+", text)} - allowed)
     if extra:
         problems.append("The brief has numbers that are not in the facts: " + ", ".join(extra[:6]) + ".")
+    if PLACEHOLDER_RE.search(text):
+        problems.append("The brief has a placeholder such as [Name].")
+    if EMAIL_RE.search(text):
+        problems.append("The brief must not include personal email addresses.")
     return text, problems
+
+
+# ---- CV Q&A ("Ask the CV") ------------------------------------------------------------
+def check_cv_answer(data: Any, cv_text: str) -> tuple[dict, list[str]]:
+    if not isinstance(data, dict):
+        return {}, ["The answer was not a JSON object."]
+    answer = str(data.get("answer") or "").strip()[:800]
+    quotes = _as_list(data.get("quotes"))
+    problems: list[str] = []
+    words = len(answer.split())
+    if words < 5:
+        problems.append("The answer is too short.")
+    if words > 140:
+        problems.append("The answer is too long. Keep it under 120 words.")
+    if PLACEHOLDER_RE.search(answer):
+        problems.append("The answer has a placeholder such as [Name].")
+    cv = CVText(cv_text)
+    good_quotes = [q[:240] for q in quotes if cv.has(q)]
+    not_mentioned = any(p in answer.lower() for p in ("not mentioned", "not in the cv", "no mention", "does not mention", "not listed"))
+    if quotes and not good_quotes:
+        problems.append("None of the quoted phrases are written in the CV. Copy exact phrases from the CV.")
+    elif not good_quotes and not not_mentioned:
+        problems.append("Quote 1 to 3 short phrases copied verbatim from the CV to support your answer.")
+    return {"answer": answer, "quotes": good_quotes[:3]}, problems
+

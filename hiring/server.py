@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
 
-from . import actions, config, db, flows, llm, scheduler
+from . import actions, config, db, flows, llm, scheduler, tools
 from .employees import EMPLOYEES, lessons, role_summary, routines, schedule
 
 VERSION = "1.0"
@@ -113,6 +113,7 @@ def detail(c: db.Candidate) -> dict:
         "events": [{"at": e.at, "actor": e.actor, "text": e.text} for e in events],
         "runs": [{"at": r.started_at, "employee": r.employee, "routine": r.routine, "outcome": r.outcome,
                   "seconds": r.seconds, "model_calls": r.model_calls, "note": r.note} for r in runs],
+        "area_matrix": tools.area_fit_matrix(c.profile or {}, c.cv_text or "", db.active_areas()),
         "cv_text": c.cv_text[:config.MAX_CV_CHARS],
     })
     return out
@@ -137,6 +138,10 @@ def state():
                                                                        db.Candidate.status.not_in(config.HR_STATUSES)))
                       if any(f.get("open") for f in (c.flags or [])))
         selected = s.scalar(select(func.count(db.Candidate.id)).where(db.Candidate.work_id.is_not(None))) or 0
+        interviewed = s.scalar(select(func.count(db.Candidate.id)).where(db.Candidate.result != "")) or 0
+        shortlisted_ever = s.scalar(select(func.count(db.Candidate.id)).where(
+            (db.Candidate.interview_at != "") | (db.Candidate.status == "shortlisted")
+        )) or 0
         recent = list(s.execute(select(db.Event, db.Candidate.app_no, db.Candidate.name)
                                 .join(db.Candidate, db.Candidate.id == db.Event.candidate_id, isouter=True)
                                 .order_by(db.Event.id.desc()).limit(12)).all())
@@ -145,11 +150,19 @@ def state():
         brief = s.scalar(select(db.Brief).order_by(db.Brief.id.desc()).limit(1))
         areas = [a.name for a in s.scalars(select(db.Area).where(db.Area.active.is_(True)).order_by(db.Area.id))]
     hr_count = sum(counts.get(k, 0) for k in config.HR_STATUSES)
+    total_cands = sum(counts.values())
     return {
         "model": llm.health(), "notice": flows.NOTICE, "paused": db.get_setting("paused") == "1",
-        "counts": counts, "total": sum(counts.values()),
+        "counts": counts, "total": total_cands,
         "tiles": {"new": counts.get("new", 0), "review": hr_count + flagged, "release": waiting,
                   "interview": counts.get("awaiting_result", 0) + counts.get("on_hold", 0), "selected": selected},
+        "funnel": {
+            "applied": total_cands,
+            "screened": total_cands - counts.get("new", 0),
+            "shortlisted": shortlisted_ever,
+            "interviewed": interviewed,
+            "selected": selected,
+        },
         "team": {k: dict(flows.TEAM[k], name=EMPLOYEES[k]) for k in EMPLOYEES},
         "recent": [{"at": e.at, "actor": e.actor, "text": e.text, "app_no": app_no or "", "name": name or ""}
                    for e, app_no, name in recent],
@@ -298,6 +311,7 @@ def team():
     since = (datetime.now() - timedelta(hours=24)).replace(microsecond=0).isoformat()
     out = []
     with db.Session() as s:
+        all_model_runs = list(s.scalars(select(db.Run).where(db.Run.model_calls > 0)))
         for key, name in EMPLOYEES.items():
             runs = list(s.scalars(select(db.Run).where(db.Run.employee == name).order_by(db.Run.id.desc()).limit(15)))
             day = list(s.scalars(select(db.Run).where(db.Run.employee == name, db.Run.started_at >= since)))
@@ -309,7 +323,20 @@ def team():
                 "runs": [{"at": r.started_at, "routine": r.routine, "outcome": r.outcome, "seconds": r.seconds,
                           "model_calls": r.model_calls, "note": r.note} for r in runs],
             })
-    return {"employees": out, "paused": db.get_setting("paused") == "1", "model": llm.health(),
+    m_total = len(all_model_runs)
+    ok_cnt = sum(1 for r in all_model_runs if r.outcome == "ok")
+    fix_cnt = sum(1 for r in all_model_runs if r.outcome == "fixed")
+    fb_cnt = sum(1 for r in all_model_runs if r.outcome == "fallback")
+    benchmark = {
+        "total_model_steps": m_total,
+        "total_model_calls": sum(r.model_calls for r in all_model_runs),
+        "first_pass_pct": round(100 * ok_cnt / m_total) if m_total else 100,
+        "verified_pct": round(100 * (ok_cnt + fix_cnt) / m_total) if m_total else 100,
+        "self_healed": fix_cnt,
+        "fallback": fb_cnt,
+        "avg_seconds": round(sum(r.seconds for r in all_model_runs) / m_total, 2) if m_total else 0.0,
+    }
+    return {"employees": out, "benchmark": benchmark, "paused": db.get_setting("paused") == "1", "model": llm.health(),
             "notice": flows.NOTICE, "scheduler": config.SCHEDULER_ENABLED}
 
 
@@ -471,6 +498,13 @@ async def result(app_no: str, request: Request):
     new = actions.enter_result(app_no, b.get("result", ""), b.get("comment", ""))
     _kick()
     return {"status": new}
+
+
+@app.post("/api/candidates/{app_no}/ask")
+async def ask_candidate_cv(app_no: str, request: Request):
+    b = await request.json()
+    return actions.ask_cv(app_no, b.get("question", ""))
+
 
 
 # ---- the pages -------------------------------------------------------------------------------

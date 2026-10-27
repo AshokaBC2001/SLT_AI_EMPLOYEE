@@ -363,9 +363,10 @@ def save_area(area_id: int | None, name: str, description: str, required, prefer
     if not required:
         raise ActionError("Add at least one required skill, so CVs can be scored for this area.")
     with db.Session() as s:
-        clash = s.scalar(select(db.Area).where(db.Area.name == name))
+        clash = s.scalar(select(db.Area).where(func.lower(db.Area.name) == name.lower()))
         if clash is not None and clash.id != area_id:
             raise ActionError(f"An area called {name} already exists.")
+        old_name = ""
         if area_id is None:
             a = db.Area(name=name, added_by="HR officer")
             s.add(a)
@@ -373,11 +374,28 @@ def save_area(area_id: int | None, name: str, description: str, required, prefer
             a = s.get(db.Area, area_id)
             if a is None:
                 raise ActionError("Unknown area.")
+            old_name = a.name
         a.name, a.description = name, (description or "").strip()[:300]
         a.required_skills, a.preferred_skills = required, _list(preferred)
         a.keywords, a.checklist = _list(keywords), _list(checklist, r"\n")
         a.active = bool(active)
+        if old_name and old_name != name:
+            for c in s.scalars(select(db.Candidate).where(db.Candidate.area == old_name)):
+                c.area = name
         s.commit()
         new_id = a.id
     db.log_event(None, "HR officer", f"{'Added' if area_id is None else 'Updated'} the area {name}.")
     return new_id
+
+
+def ask_cv(app_no: str, question: str) -> dict:
+    from . import flows
+    c = _candidate(app_no)
+    q = (question or "").strip()[:240]
+    if len(q) < 3:
+        raise ActionError("Write a short question about this CV first.")
+    if not c.cv_text or len(c.cv_text.strip()) < 20:
+        raise ActionError("There is no readable CV text for this candidate.")
+    profile = c.profile or tools.rule_profile(c.cv_text, tools.skill_vocabulary(db.active_areas()))
+    return flows.ask_candidate_cv(c.id, c.cv_text, profile, q)
+

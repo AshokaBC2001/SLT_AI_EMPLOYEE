@@ -107,3 +107,25 @@ def test_csv_export_reschedule_checklist_and_release_all(client):
     assert csv_resp.status_code == 200 and "text/csv" in csv_resp.headers["content-type"]
     assert app_no in csv_resp.text and "1001" in csv_resp.text
 
+
+def test_ask_cv_area_matrix_funnel_and_benchmark_endpoints(client):
+    client.post("/api/samples", headers=HR)
+    flows.run_all_once()
+    rows = client.get("/api/candidates").json()
+    app_no = rows[0]["app_no"]
+    detail = client.get(f"/api/candidates/{app_no}").json()
+    assert len(detail["area_matrix"]) == 4
+
+    r_ask = client.post(f"/api/candidates/{app_no}/ask", headers=IN, json={"question": "Summarize key strengths"})
+    assert r_ask.status_code == 200
+    body = r_ask.json()
+    assert body["answer"] and isinstance(body["quotes"], list)
+
+    st = client.get("/api/state").json()
+    assert st["funnel"]["applied"] == 7 and st["funnel"]["screened"] == 7
+
+    tm = client.get("/api/team").json()
+    assert tm["benchmark"]["total_model_steps"] > 0
+    assert tm["benchmark"]["verified_pct"] == 100
+
+

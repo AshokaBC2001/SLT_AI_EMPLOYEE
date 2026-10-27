@@ -355,3 +355,41 @@ def test_set_email_flags_duplicate_and_release_all(fake):
     assert res["released"] == 2
     assert cand(a).status == "awaiting_result" and cand(b).status == "awaiting_result"
 
+
+def test_ask_cv_and_area_fit_matrix_and_area_rename(fake):
+    a = add("kavindu_perera.txt")
+    flows.run_employee("recruiter", wait=True)
+    c = cand(a)
+    matrix = tools.area_fit_matrix(c.profile, c.cv_text, db.active_areas())
+    assert len(matrix) == 4 and matrix[0]["area"] == "AI/ML" and matrix[0]["score"] >= 60
+
+    ans = actions.ask_cv(a, "Summarize key strengths")
+    assert ans["answer"] and ans["quotes"] and "AI" in ans["source"]
+    assert all(checks.CVText(c.cv_text).has(q) for q in ans["quotes"])
+
+    # Self-healing when model initially invents a quote not in CV
+    fake.bad["ask-cv"] = 1
+    ans_fixed = actions.ask_cv(a, "What projects did this student build?")
+    assert "fixed" in ans_fixed["source"]
+
+    # Fallback when model keeps failing checks
+    fake.bad["ask-cv"] = 5
+    ans_fb = actions.ask_cv(a, "Does the CV mention Python and Scikit-learn?")
+    assert "rules" in ans_fb["source"] and ans_fb["quotes"]
+
+    # Renaming an area updates existing candidates in that area
+    ai_area = db.area_by_name("AI/ML")
+    actions.save_area(ai_area.id, "AI & ML", ai_area.description, ai_area.required_skills,
+                      ai_area.preferred_skills, ai_area.keywords, ai_area.checklist, True)
+    assert cand(a).area == "AI & ML"
+
+
+def test_brief_check_rejects_placeholders_and_emails():
+    _, problems = checks.check_brief(
+        {"brief": "Good morning [Name]. Contact student@example.com for the 3 items today. " * 3},
+        {"a": 3},
+    )
+    text = " ".join(problems)
+    assert "placeholder" in text and "email" in text
+
+

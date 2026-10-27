@@ -20,7 +20,8 @@ let STATE = null;
 let lastHTML = "";
 let current = { page: "", arg: "" };
 const UI = { showCv: false, showRuns: false, editDraft: null, editEmail: false, candFilter: "", candQuery: "",
-             repliesTab: "waiting", showAll: "", files: [], uploadResults: null, areas: null };
+             repliesTab: "waiting", showAll: "", files: [], uploadResults: null, areas: null,
+             cvAnswer: null, cvLoading: false };
 
 async function api(path, { method = "GET", body, form } = {}) {
   const opt = { method, headers: { "X-Role": ROLE } };
@@ -81,7 +82,7 @@ function setView(html) {
 function busy() {
   const a = document.activeElement;
   return $("#dialog").open || !$("#role-menu").hidden || document.hidden ||
-    (a && ["INPUT", "TEXTAREA", "SELECT"].includes(a.tagName)) || UI.editDraft !== null || UI.editEmail;
+    (a && ["INPUT", "TEXTAREA", "SELECT"].includes(a.tagName)) || UI.editDraft !== null || UI.editEmail || UI.cvLoading;
 }
 
 // ---------------------------------------------------------------- dialogs
@@ -253,6 +254,15 @@ async function pDashboard() {
   const totalPassed = Object.values(passed).reduce((x, y) => x + y, 0);
   const areaNums = areaNames.length ? `<div class="num-grid"><a class="num-box total" href="#/candidates/selected"><b>${esc(totalPassed)}</b><span>All areas</span></a>
       ${areaNames.map((a) => `<div class="num-box"><b>${esc(passed[a] || 0)}</b><span>${esc(a)}</span></div>`).join("")}</div>` : empty("No areas yet.");
+  const fn = s.funnel || {};
+  const funnelSteps = [
+    ["Applied", fn.applied ?? s.total],
+    ["AI Screened", fn.screened ?? 0],
+    ["Shortlisted", fn.shortlisted ?? 0],
+    ["Interviewed", fn.interviewed ?? 0],
+    ["Selected", fn.selected ?? 0],
+  ];
+  const funnelHtml = `<div class="num-grid">${funnelSteps.map(([lbl, val], idx) => `<div class="num-box ${idx === 4 ? "total" : ""}"><b>${esc(val)}</b><span>${esc(lbl)}</span></div>`).join("")}</div>`;
   const recent = s.recent.length ? s.recent.slice(0, 5).map((r) => `<${r.app_no ? `a href="#/candidate/${encodeURIComponent(r.app_no)}"` : "div"} class="row">${dateBox(r.at)}
       <div class="grow"><div class="title">${esc(r.text)}</div><div class="sub">${actorTag(r.actor)} ${r.app_no ? esc(r.app_no) + " - " + esc(r.name || "") : ""} - ${esc(fmtTime(r.at))}</div></div></${r.app_no ? "a" : "div"}>`).join("") : empty("Nothing has happened yet.");
   const brief = s.brief ? `<p style="margin:0 0 12px;line-height:1.65">${esc(s.brief.text)}</p><div class="actions">${sourceTag("Chief of staff - " + s.brief.written_by)}<span class="small muted">${esc(fmtTime(s.brief.created_at))}</span></div>`
@@ -266,7 +276,10 @@ async function pDashboard() {
     <div style="margin-top:24px">${next}</div>
     <div class="tiles" style="margin-top:24px">${tiles}</div>
     <div class="card">${cardHead("message-square-text", "green", "Morning brief", `<button class="btn small" data-act="brief">${icon("refresh-cw", "sm")} Write brief now</button>`)}${brief}</div>
-    <div class="card">${cardHead("award", "green", "Selected candidates by area", `<span class="hint">Passed the interview</span>`)}${areaNums}</div>
+    <div class="grid two">
+      <div class="card">${cardHead("chart-column", "blue", "Hiring pipeline funnel", `<span class="hint">End-to-end conversion</span>`)}${funnelHtml}</div>
+      <div class="card">${cardHead("award", "green", "Selected candidates by area", `<span class="hint">Passed the interview</span>`)}${areaNums}</div>
+    </div>
     <div class="grid two">
       <div class="card">${cardHead("activity", "purple", "Recent activity")}<div class="rows">${recent}</div></div>
       <div class="card">${cardHead("bot", "purple", "AI team", `<a class="btn small" href="#/team">Open AI team</a>`)}<div class="rows">${team}</div></div>
@@ -324,7 +337,7 @@ function addFiles(list) {
 const FILTERS = [["", "All"], ["selected", "Selected candidates"], ["new", "New"], ["interview", "In interview"], ["closed", "Closed"], ["review", "Needs you"], ["release", "Emails to release"]];
 async function pCandidates(arg) {
   title("Candidates");
-  if (arg !== undefined && arg !== "" && FILTERS.some((f) => f[0] === arg)) UI.candFilter = arg;
+  if (arg !== undefined && FILTERS.some((f) => f[0] === arg)) UI.candFilter = arg;
   const selected = UI.candFilter === "selected";
   let rows = await api(`/api/candidates?status=${encodeURIComponent(UI.candFilter)}`);
   const q = UI.candQuery.toLowerCase();
@@ -415,8 +428,16 @@ async function pCandidate(appNo) {
         ${c.area_evidence.length ? `<div class="field"><div class="label">Evidence from the CV</div>${c.area_evidence.map((e) => `<div class="quote">"${esc(e)}"</div>`).join("")}</div>` : ""}
         ${c.score != null ? `<div class="field"><div class="label">Score (calculated by code)</div><div class="score-big"><b style="color:var(--${scoreColor(c.score)}-ink)">${esc(c.score)}</b><span class="muted">/ 100</span></div><div class="bars">${bars}</div>
           <div class="legend"><span><i style="background:#43B580"></i>60+ Shortlisted</span><span><i style="background:#E9A23B"></i>50-59 You decide</span><span><i style="background:#EF4444"></i>Below 50 Not shortlisted</span></div></div>` : ""}
-        ${c.gaps.length ? `<div class="field"><div class="label">Skill gaps</div><div class="chips">${c.gaps.map((g) => `<span class="chip red">${esc(g)}</span>`).join("")}</div></div>` : ""}</div>
+        ${c.gaps.length ? `<div class="field"><div class="label">Skill gaps</div><div class="chips">${c.gaps.map((g) => `<span class="chip red">${esc(g)}</span>`).join("")}</div></div>` : ""}
+        ${(c.area_matrix && c.area_matrix.length > 1) ? `<div class="field"><div class="label">Fit across all areas</div><div class="rows" style="gap:8px;margin-top:6px">${c.area_matrix.map((m) => `<div class="routine" style="align-items:center;padding:8px 12px"><div class="grow"><b>${esc(m.area)}</b> ${m.area === c.area ? `<span class="chip purple" style="padding:2px 8px;font-size:11px">Current</span>` : ""}<div class="small muted">${esc(m.matched_required.length)}/${esc(m.total_required)} required skills${m.matched_preferred.length ? ` + ${esc(m.matched_preferred.length)} preferred` : ""}</div></div><span class="chip ${scoreColor(m.score)}">${esc(m.score)}/100</span>${ROLE === "hr" && m.area !== c.area && ["needs_area", "borderline", "not_shortlisted_check"].includes(c.status) ? `<button class="btn small" data-act="quick-area" data-area="${esc(m.area)}">Use</button>` : ""}</div>`).join("")}</div></div>` : ""}</div>
     </div>
+    ${c.cv_text ? `<div class="card" style="margin-top:24px">${cardHead("sparkles", "blue", "Ask the CV", `<span class="hint">Citation-checked against the CV text</span>`)}
+      <div class="actions" style="margin-bottom:12px">
+        ${["Summarize key strengths", "What projects did this student build?", "Does the CV mention databases or SQL?", "What cloud or DevOps tools are listed?"].map((q) => `<button class="btn small" data-act="ask-preset" data-q="${esc(q)}" ${UI.cvLoading ? "disabled" : ""}>${esc(q)}</button>`).join("")}
+      </div>
+      <div class="actions"><input type="text" id="ask-cv-q" placeholder="Ask any question about this candidate's CV..." style="flex:1;min-width:240px" value="${esc(UI.cvAnswer ? UI.cvAnswer.question : "")}"><button class="btn primary" data-act="ask-cv" ${UI.cvLoading ? "disabled" : ""}>${icon("search", "sm")} ${UI.cvLoading ? "Checking CV..." : "Ask CV"}</button></div>
+      ${UI.cvAnswer ? `<div class="note" style="margin-top:14px;background:var(--soft);border-color:var(--line)"><div class="grow"><div style="display:flex;gap:8px;align-items:center;margin-bottom:6px"><b>Answer</b>${sourceTag(UI.cvAnswer.source)}</div><div style="line-height:1.6">${esc(UI.cvAnswer.answer)}</div>${UI.cvAnswer.quotes && UI.cvAnswer.quotes.length ? `<div style="margin-top:10px"><div class="label">Exact quotes verified in CV</div>${UI.cvAnswer.quotes.map((qt) => `<div class="quote">"${esc(qt)}"</div>`).join("")}</div>` : ""}</div></div>` : ""}
+    </div>` : ""}
     ${hasInterview ? `<div class="card" style="margin-top:24px">${cardHead("calendar-check", "green", "Interview", c.questions_source ? sourceTag(c.questions_source === "AI" ? "Questions by AI" : c.questions_source) : "")}
       <div class="grid two" style="gap:20px"><div><div class="field"><div class="label">Date and time</div><div class="value">${esc(c.interview_label || "-")} ${ROLE === "hr" && ["invite_ready", "awaiting_result", "on_hold"].includes(c.status) ? `<button class="btn ghost small" data-act="change-slot" data-cur="${esc(c.interview_at || "")}">${icon("pencil", "sm")} Change slot</button>` : ""}</div></div>
         <div class="field"><div class="label">Result</div><div class="value">${c.result ? `<span class="chip ${c.result === "Pass" ? "green" : c.result === "Fail" ? "red" : "amber"}">${esc(c.result)}</span> <span class="small muted">${esc(fmtTime(c.result_at))} - decided by the interviewer</span>` : `<span class="muted">Not entered yet</span>`}</div></div>
@@ -512,10 +533,20 @@ async function pTeam() {
   title("AI team");
   const t = await api("/api/team");
   const down = !t.model.ok || (t.notice && t.notice.text);
+  const bm = t.benchmark || {};
+  const benchCard = `<div class="card" style="margin-top:24px">${cardHead("shield-check", "green", "Guardrail & Model Reliability Benchmark", `<span class="hint">${esc(t.model.model || "Local LLM")}</span>`)}
+    <div class="num-grid">
+      <div class="num-box total"><b>${esc(bm.verified_pct ?? 100)}%</b><span>Verified output rate</span></div>
+      <div class="num-box"><b>${esc(bm.first_pass_pct ?? 100)}%</b><span>First-pass check rate</span></div>
+      <div class="num-box"><b>${esc(bm.self_healed ?? 0)}</b><span>Self-healed after check</span></div>
+      <div class="num-box"><b>${esc(bm.fallback ?? 0)}</b><span>Rule fallbacks used</span></div>
+      <div class="num-box"><b>${esc(bm.avg_seconds ?? 0)}s</b><span>Avg latency (${esc(bm.total_model_steps ?? 0)} steps)</span></div>
+    </div></div>`;
   setView(`<div class="banner ${down ? "red" : t.paused ? "amber" : "blue"}"><div class="hicon ${down ? "red" : "purple"}">${icon("bot")}</div>
       <div class="grow"><b>${down ? "The model server is not running, so the AI team is waiting." : t.paused ? "The AI team is paused." : "Four AI employees work on their own schedule."}</b>
       <span class="muted small"> Each one is a folder of Markdown files (ROLE, SCHEDULE, RELEASES and one SKILL file per routine). The status of a candidate hands the work from one to the next.</span></div>
       ${ROLE === "hr" ? `<div class="actions"><button class="btn primary" data-act="run" data-who="all">${icon("play")} Run all now</button><button class="btn" data-act="pause" data-p="${t.paused ? "0" : "1"}">${icon(t.paused ? "play" : "pause")} ${t.paused ? "Resume" : "Pause"}</button></div>` : ""}</div>
+    ${benchCard}
     <div class="grid two">${t.employees.map((e, i) => `<div class="card">
       <div class="emp"><div class="emp-icon e${i}">${icon(["user-round-search", "calendar-check", "id-card", "activity"][i], "lg")}</div>
         <div><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2 style="margin:0;font-size:19px">${esc(e.name)}</h2>
@@ -627,6 +658,30 @@ const ACTS = {
   "save-email": () => act(async () => { await api(`/api/candidates/${encodeURIComponent(current.arg)}/email`, { method: "POST", body: { email: $("#email-input").value } }); UI.editEmail = false; }, "Email saved."),
   "set-area": () => act(() => api(`/api/candidates/${encodeURIComponent(current.arg)}/area`, { method: "POST", body: { area: $("#area-pick").value } }),
     (r) => `Area saved. Score ${r.score}/100.`),
+  "quick-area": (b) => act(() => api(`/api/candidates/${encodeURIComponent(current.arg)}/area`, { method: "POST", body: { area: b.dataset.area } }),
+    (r) => `Switched area to ${b.dataset.area}. Score ${r.score}/100.`),
+  "ask-preset": (b) => {
+    const inp = $("#ask-cv-q");
+    if (inp) inp.value = b.dataset.q || "";
+    ACTS["ask-cv"]();
+  },
+  "ask-cv": async () => {
+    const inp = $("#ask-cv-q");
+    const question = inp ? inp.value.trim() : "";
+    if (!question) { toast("Write a question about this CV first.", true); return; }
+    UI.cvLoading = true;
+    lastHTML = "";
+    await render();
+    try {
+      UI.cvAnswer = await api(`/api/candidates/${encodeURIComponent(current.arg)}/ask`, { method: "POST", body: { question } });
+    } catch (e) {
+      toast(e.message, true);
+    } finally {
+      UI.cvLoading = false;
+      lastHTML = "";
+      await render();
+    }
+  },
   "decide": async (b) => {
     const d = b.dataset.d;
     const text = { shortlist: ["Shortlist this student?", "The Coordinator will book an interview and draft the invitation for you to release.", "Shortlist"],
@@ -704,6 +759,12 @@ view.addEventListener("click", (e) => {
   const row = e.target.closest("[data-href]");
   if (row) location.hash = row.dataset.href;
 });
+view.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.target.id === "ask-cv-q" && !UI.cvLoading) {
+    e.preventDefault();
+    ACTS["ask-cv"]();
+  }
+});
 
 // ================================================================ router
 const ROUTES = {
@@ -721,7 +782,7 @@ async function render() {
   const { page, arg } = parseHash();
   const fn = ROUTES[ROLE][page];
   if (!fn) { location.replace(HOME[ROLE]); return; }
-  if (page !== current.page || arg !== current.arg) { UI.showCv = false; UI.showRuns = false; UI.editDraft = null; UI.editEmail = false; lastHTML = ""; window.scrollTo(0, 0); }
+  if (page !== current.page || arg !== current.arg) { UI.showCv = false; UI.showRuns = false; UI.editDraft = null; UI.editEmail = false; UI.cvAnswer = null; UI.cvLoading = false; lastHTML = ""; window.scrollTo(0, 0); }
   current = { page, arg };
   renderFrame();
   rendering = true;
