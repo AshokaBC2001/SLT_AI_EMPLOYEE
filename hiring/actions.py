@@ -102,6 +102,7 @@ def set_email(app_no: str, email: str) -> None:
     if not checks.EMAIL_RE.fullmatch(email):
         raise ActionError(f'"{email}" is not a valid email address.')
     flags = _resolve_flags(c, ("No email address", "The email typed by the HR officer", "Possible duplicate:"))
+    # Warn the HR officer if another candidate already uses this email address.
     with db.Session() as s:
         other = s.scalar(select(db.Candidate).where(func.lower(db.Candidate.email) == email.lower(),
                                                     db.Candidate.id != c.id))
@@ -187,6 +188,7 @@ def resolve_flag(app_no: str, index: int) -> None:
 
 
 def toggle_checklist(app_no: str, index: int) -> list[dict]:
+    """Mark one item on a passed candidate's induction checklist as done or not done."""
     c = _candidate(app_no)
     items = [dict(item) for item in (c.checklist or [])]
     if not 0 <= index < len(items):
@@ -199,12 +201,14 @@ def toggle_checklist(app_no: str, index: int) -> list[dict]:
 
 
 def free_interview_slots(count: int = 21) -> list[dict[str, str]]:
+    """Return the next free interview slots that are not already booked."""
     with db.Session() as s:
         taken = {x for x in s.scalars(select(db.Candidate.interview_at).where(db.Candidate.interview_at != ""))}
     return tools.upcoming_interview_slots(taken, count=count)
 
 
 def reschedule_interview(app_no: str, slot_iso: str) -> dict:
+    """Move a candidate's interview to another free slot and update any waiting invitation email."""
     c = _candidate(app_no)
     _need(c, {"invite_ready", "awaiting_result", "on_hold"}, "Changing the interview slot")
     slot_iso = (slot_iso or "").strip()
@@ -222,6 +226,7 @@ def reschedule_interview(app_no: str, slot_iso: str) -> dict:
         cand.interview_at = slot_iso
         cand.interview_label = label
         cand.updated_at = db.now()
+        # If the invitation email has not been released yet, keep its date and time in sync.
         drafts = list(s.scalars(select(db.Draft).where(
             db.Draft.candidate_id == c.id, db.Draft.kind == "invitation", db.Draft.status == "waiting")))
         for d in drafts:
@@ -320,6 +325,7 @@ def release_draft(draft_id: int) -> str:
 
 
 def release_all_ready() -> dict:
+    """Release every waiting draft whose candidate is at the right step and has a valid email."""
     with db.Session() as s:
         rows = list(s.execute(select(db.Draft, db.Candidate)
                               .join(db.Candidate, db.Candidate.id == db.Draft.candidate_id)
@@ -379,6 +385,7 @@ def save_area(area_id: int | None, name: str, description: str, required, prefer
         a.required_skills, a.preferred_skills = required, _list(preferred)
         a.keywords, a.checklist = _list(keywords), _list(checklist, r"\n")
         a.active = bool(active)
+        # Keep existing candidates linked to this area if the HR officer renamed it.
         if old_name and old_name != name:
             for c in s.scalars(select(db.Candidate).where(db.Candidate.area == old_name)):
                 c.area = name
@@ -389,6 +396,7 @@ def save_area(area_id: int | None, name: str, description: str, required, prefer
 
 
 def ask_cv(app_no: str, question: str) -> dict:
+    """Answer a question from the HR officer or Interviewer using only facts in the CV."""
     from . import flows
     c = _candidate(app_no)
     q = (question or "").strip()[:240]

@@ -416,6 +416,7 @@ def _save_with_drafts(key: str, s: dict, fields: dict) -> bool:
             setattr(c, k, v)
         c.updated_at = db.now()
         for d in s.get("drafts", []):
+            # Discard any older waiting draft of the same kind so only the latest one is shown.
             for old in ses.scalars(select(db.Draft).where(
                     db.Draft.candidate_id == c.id, db.Draft.kind == d["kind"], db.Draft.status == "waiting")):
                 old.status = "discarded"

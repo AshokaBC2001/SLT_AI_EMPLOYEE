@@ -173,6 +173,7 @@ def state():
 
 
 def _query_candidates(status: str = "", q: str = "") -> list[db.Candidate]:
+    """Filter candidates by status group and search query (shared by the list API and CSV export)."""
     with db.Session() as s:
         query = select(db.Candidate).order_by(db.Candidate.id.desc())
         groups = {"interview": {"awaiting_result", "on_hold"}, "working": {"new", "shortlisted", "not_shortlisted",
@@ -204,6 +205,7 @@ def list_candidates(status: str = "", q: str = ""):
 
 @app.get("/api/candidates.csv")
 def export_candidates_csv(status: str = "", q: str = ""):
+    """Download the candidate register (or the current filtered view) as a CSV spreadsheet."""
     rows = _query_candidates(status, q)
     buf = io.StringIO()
     writer = csv.writer(buf)

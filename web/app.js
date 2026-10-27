@@ -254,6 +254,7 @@ async function pDashboard() {
   const totalPassed = Object.values(passed).reduce((x, y) => x + y, 0);
   const areaNums = areaNames.length ? `<div class="num-grid"><a class="num-box total" href="#/candidates/selected"><b>${esc(totalPassed)}</b><span>All areas</span></a>
       ${areaNames.map((a) => `<div class="num-box"><b>${esc(passed[a] || 0)}</b><span>${esc(a)}</span></div>`).join("")}</div>` : empty("No areas yet.");
+  // End-to-end conversion numbers from application to selection
   const fn = s.funnel || {};
   const funnelSteps = [
     ["Applied", fn.applied ?? s.total],
@@ -337,6 +338,7 @@ function addFiles(list) {
 const FILTERS = [["", "All"], ["selected", "Selected candidates"], ["new", "New"], ["interview", "In interview"], ["closed", "Closed"], ["review", "Needs you"], ["release", "Emails to release"]];
 async function pCandidates(arg) {
   title("Candidates");
+  // Update the filter when coming from a link (e.g. #/candidates or #/candidates/selected).
   if (arg !== undefined && FILTERS.some((f) => f[0] === arg)) UI.candFilter = arg;
   const selected = UI.candFilter === "selected";
   let rows = await api(`/api/candidates?status=${encodeURIComponent(UI.candFilter)}`);

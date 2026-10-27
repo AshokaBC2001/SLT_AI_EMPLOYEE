@@ -270,6 +270,7 @@ def check_brief(data: Any, facts: dict) -> tuple[str, list[str]]:
     extra = sorted({n.lstrip("0") or "0" for n in re.findall(r"\d+", text)} - allowed)
     if extra:
         problems.append("The brief has numbers that are not in the facts: " + ", ".join(extra[:6]) + ".")
+    # The morning brief is a summary for the HR officer: no placeholders or personal emails.
     if PLACEHOLDER_RE.search(text):
         problems.append("The brief has a placeholder such as [Name].")
     if EMAIL_RE.search(text):
@@ -279,6 +280,7 @@ def check_brief(data: Any, facts: dict) -> tuple[str, list[str]]:
 
 # ---- CV Q&A ("Ask the CV") ------------------------------------------------------------
 def check_cv_answer(data: Any, cv_text: str) -> tuple[dict, list[str]]:
+    """Make sure the answer is short and every supporting quote is really in the CV."""
     if not isinstance(data, dict):
         return {}, ["The answer was not a JSON object."]
     answer = str(data.get("answer") or "").strip()[:800]
@@ -293,6 +295,7 @@ def check_cv_answer(data: Any, cv_text: str) -> tuple[dict, list[str]]:
         problems.append("The answer has a placeholder such as [Name].")
     cv = CVText(cv_text)
     good_quotes = [q[:240] for q in quotes if cv.has(q)]
+    # Only allow an empty quote list when the model explicitly says the CV does not mention it.
     not_mentioned = any(p in answer.lower() for p in ("not mentioned", "not in the cv", "no mention", "does not mention", "not listed"))
     if quotes and not good_quotes:
         problems.append("None of the quoted phrases are written in the CV. Copy exact phrases from the CV.")

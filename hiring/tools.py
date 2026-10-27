@@ -200,7 +200,7 @@ def best_area_by_rules(profile: dict, cv_text: str, areas: list) -> tuple[str, i
 
 
 def area_fit_matrix(profile: dict, cv_text: str, areas: list) -> list[dict]:
-    """Evaluate a candidate against all active areas and return a sorted comparison list."""
+    """Score the CV against every active area so the HR officer can compare them side by side."""
     if not cv_text or not cv_text.strip():
         return []
     cv = CVText(cv_text)
@@ -222,6 +222,7 @@ def area_fit_matrix(profile: dict, cv_text: str, areas: list) -> list[dict]:
             "matched_preferred": found_pref,
             "gaps": gaps[:4],
         })
+    # Highest score first; break ties by required skills found, then preferred skills.
     rows.sort(key=lambda r: (r["score"], len(r["matched_required"]), len(r["matched_preferred"])), reverse=True)
     return rows
 
@@ -233,13 +234,14 @@ QUESTION_STOP = {"what", "which", "where", "when", "who", "how", "why", "does", 
 
 
 def rule_answer_cv(question: str, cv_text: str, profile: dict | None = None) -> dict:
-    """Deterministic CV Q&A fallback that searches CV lines and profile facts."""
+    """Answer a question from the CV by plain rules when the model is offline or fails the checks."""
     p = profile or {}
     q_norm = norm(question)
     keywords = [w for w in q_norm.split() if len(w) >= 2 and w not in QUESTION_STOP]
     lines = [re.sub(r"^[\-•*●▪>]+\s*", "", ln).strip() for ln in (cv_text or "").splitlines() if len(ln.strip()) >= 8]
     cv = CVText(cv_text)
 
+    # Broad summary / strengths questions use the parsed profile sections.
     if any(w in q_norm for w in ("summary", "summarize", "strength", "strengths", "overview", "highlight", "highlights")):
         skills = (p.get("skills") or [])[:6]
         edu = (p.get("education") or [])[:1]
@@ -255,6 +257,7 @@ def rule_answer_cv(question: str, cv_text: str, profile: dict | None = None) -> 
         ans = " ".join(parts) if parts else "The CV lists the candidate's academic background, skills and projects."
         return {"answer": ans, "quotes": quotes}
 
+    # Specific questions match CV lines that contain the question keywords.
     scored: list[tuple[int, str]] = []
     for ln in lines:
         ln_cv = CVText(ln)
@@ -281,6 +284,7 @@ def rule_answer_cv(question: str, cv_text: str, profile: dict | None = None) -> 
 
 # ---- Interview slots -------------------------------------------------------------------
 def format_slot_label(iso: str) -> str:
+    """Turn an ISO slot string into a friendly date and time label."""
     dt = datetime.fromisoformat(iso)
     return f"{dt.strftime('%A')} {dt.day} {dt.strftime('%B %Y')} at {dt.strftime('%H:%M')}"
 
