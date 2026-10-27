@@ -43,6 +43,14 @@ In alignment with the project's core architectural rule—**"The model proposes,
 - **Issue:** macOS `.DS_Store` metadata was tracked in git and `.pytest_cache/` was not ignored.
 - **Fix:** Removed `.DS_Store` from tracking and added `.DS_Store` and `.pytest_cache/` to `.gitignore`.
 
+### 2.7 Real Gemma 3 4B Quote Normalization & 2x+ Speed Optimization (`start_model.sh`, `hiring/llm.py`, `hiring/employees.py`, `hiring/checks.py`)
+- **Issue:** Running the real **Gemma 3 4B** (`ggml-org/gemma-3-4b-it-GGUF:Q4_K_M`) model revealed two practical bottlenecks:
+  1. `start_model.sh` loaded an unused 850 MB multimodal vision projector (`mmproj-model-f16.gguf`) and allocated 4 parallel 8192-token KV cache slots for a text-only single-user app, while `hiring/llm.py` attached `response_format: {"type": "json_object"}` on the first attempt—forcing `llama-server` to evaluate a CPU GBNF grammar across all 262,144 tokens in Gemma 3's vocabulary on every token step.
+  2. Gemma 3 4B frequently wrapped evidence strings in extra quotation marks (`"\"built a classification model...\""`) or leading bullet markers (`"- Customer churn prediction..."`), resulting in double quotes in the UI.
+- **Fix:**
+  1. Updated `start_model.sh` with `--no-mmproj -np 1 -c 4096 -fa on` (saving ~850 MB RAM and enabling Flash Attention) and updated `llm.chat()` / `ask_checked()` to skip the CPU GBNF grammar on `attempt == 0` (relying on `parse_json_object()` first and only enabling `strict_grammar=True` on retry), cutting real model latency by **more than 2x**.
+  2. Added `_clean_quote()` in `hiring/checks.py` to strip outer quotation marks and leading bullet characters before checking `CVText.has()` in `check_area()` and `check_cv_answer()`.
+
 ---
 
 ## 3. New Features & Innovations

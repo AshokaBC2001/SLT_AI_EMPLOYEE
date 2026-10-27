@@ -158,13 +158,18 @@ def clean_area_name(raw: str) -> str:
     return s.title() if s.islower() else s
 
 
+def _clean_quote(text: str) -> str:
+    """Strip extra outer quotation marks and bullet markers that LLMs often include in quotes."""
+    return re.sub(r"^[\-\*•\s]+", "", (text or "").strip().strip("\"'“”‘’")).strip().strip("\"'“”‘’")
+
+
 def check_area(data: Any, area_names: list[str], cv_text: str) -> tuple[dict, list[str]]:
     if not isinstance(data, dict):
         return {}, ["The answer was not a JSON object."]
     problems: list[str] = []
     raw = str(data.get("area") or "").strip()
     reasons = [r[:250] for r in _as_list(data.get("reasons"))][:3]
-    evidence = _as_list(data.get("evidence"))
+    evidence = [_clean_quote(e) for e in _as_list(data.get("evidence")) if _clean_quote(e)]
     resolved = resolve_area(raw, area_names)
     new_area = ""
     if resolved is None:
@@ -284,7 +289,7 @@ def check_cv_answer(data: Any, cv_text: str) -> tuple[dict, list[str]]:
     if not isinstance(data, dict):
         return {}, ["The answer was not a JSON object."]
     answer = str(data.get("answer") or "").strip()[:800]
-    quotes = _as_list(data.get("quotes"))
+    quotes = [_clean_quote(q) for q in _as_list(data.get("quotes")) if _clean_quote(q)]
     problems: list[str] = []
     words = len(answer.split())
     if words < 5:

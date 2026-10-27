@@ -386,6 +386,17 @@ function nextStep(c, areas) {
   }
 }
 
+function askCvCard(c) {
+  if (!c.cv_text) return "";
+  return `<div class="card" style="margin-top:24px">${cardHead("sparkles", "blue", "Ask the CV", `<span class="hint">Citation-checked against the CV text</span>`)}
+    <div class="actions" style="margin-bottom:12px">
+      ${["Summarize key strengths", "What projects did this student build?", "Does the CV mention databases or SQL?", "What cloud or DevOps tools are listed?"].map((q) => `<button class="btn small" data-act="ask-preset" data-q="${esc(q)}" ${UI.cvLoading ? "disabled" : ""}>${esc(q)}</button>`).join("")}
+    </div>
+    <div class="actions"><input type="text" id="ask-cv-q" placeholder="Ask any question about this candidate's CV..." style="flex:1;min-width:240px" value="${esc(UI.cvAnswer ? UI.cvAnswer.question : "")}"><button class="btn primary" data-act="ask-cv" ${UI.cvLoading ? "disabled" : ""}>${icon("search", "sm")} ${UI.cvLoading ? "Checking CV..." : "Ask CV"}</button></div>
+    ${UI.cvAnswer ? `<div class="note" style="margin-top:14px;background:var(--soft);border-color:var(--line)"><div class="grow"><div style="display:flex;gap:8px;align-items:center;margin-bottom:6px"><b>Answer</b>${sourceTag(UI.cvAnswer.source)}</div><div style="line-height:1.6">${esc(UI.cvAnswer.answer)}</div>${UI.cvAnswer.quotes && UI.cvAnswer.quotes.length ? `<div style="margin-top:10px"><div class="label">Exact quotes verified in CV</div>${UI.cvAnswer.quotes.map((qt) => `<div class="quote">"${esc(qt)}"</div>`).join("")}</div>` : ""}</div></div>` : ""}
+  </div>`;
+}
+
 async function pCandidate(appNo) {
   title("Candidate");
   const [c, areas] = await Promise.all([api(`/api/candidates/${encodeURIComponent(appNo)}`), UI.areas ? Promise.resolve(UI.areas) : api("/api/areas")]);
@@ -433,13 +444,7 @@ async function pCandidate(appNo) {
         ${c.gaps.length ? `<div class="field"><div class="label">Skill gaps</div><div class="chips">${c.gaps.map((g) => `<span class="chip red">${esc(g)}</span>`).join("")}</div></div>` : ""}
         ${(c.area_matrix && c.area_matrix.length > 1) ? `<div class="field"><div class="label">Fit across all areas</div><div class="rows" style="gap:8px;margin-top:6px">${c.area_matrix.map((m) => `<div class="routine" style="align-items:center;padding:8px 12px"><div class="grow"><b>${esc(m.area)}</b> ${m.area === c.area ? `<span class="chip purple" style="padding:2px 8px;font-size:11px">Current</span>` : ""}<div class="small muted">${esc(m.matched_required.length)}/${esc(m.total_required)} required skills${m.matched_preferred.length ? ` + ${esc(m.matched_preferred.length)} preferred` : ""}</div></div><span class="chip ${scoreColor(m.score)}">${esc(m.score)}/100</span>${ROLE === "hr" && m.area !== c.area && ["needs_area", "borderline", "not_shortlisted_check"].includes(c.status) ? `<button class="btn small" data-act="quick-area" data-area="${esc(m.area)}">Use</button>` : ""}</div>`).join("")}</div></div>` : ""}</div>
     </div>
-    ${c.cv_text ? `<div class="card" style="margin-top:24px">${cardHead("sparkles", "blue", "Ask the CV", `<span class="hint">Citation-checked against the CV text</span>`)}
-      <div class="actions" style="margin-bottom:12px">
-        ${["Summarize key strengths", "What projects did this student build?", "Does the CV mention databases or SQL?", "What cloud or DevOps tools are listed?"].map((q) => `<button class="btn small" data-act="ask-preset" data-q="${esc(q)}" ${UI.cvLoading ? "disabled" : ""}>${esc(q)}</button>`).join("")}
-      </div>
-      <div class="actions"><input type="text" id="ask-cv-q" placeholder="Ask any question about this candidate's CV..." style="flex:1;min-width:240px" value="${esc(UI.cvAnswer ? UI.cvAnswer.question : "")}"><button class="btn primary" data-act="ask-cv" ${UI.cvLoading ? "disabled" : ""}>${icon("search", "sm")} ${UI.cvLoading ? "Checking CV..." : "Ask CV"}</button></div>
-      ${UI.cvAnswer ? `<div class="note" style="margin-top:14px;background:var(--soft);border-color:var(--line)"><div class="grow"><div style="display:flex;gap:8px;align-items:center;margin-bottom:6px"><b>Answer</b>${sourceTag(UI.cvAnswer.source)}</div><div style="line-height:1.6">${esc(UI.cvAnswer.answer)}</div>${UI.cvAnswer.quotes && UI.cvAnswer.quotes.length ? `<div style="margin-top:10px"><div class="label">Exact quotes verified in CV</div>${UI.cvAnswer.quotes.map((qt) => `<div class="quote">"${esc(qt)}"</div>`).join("")}</div>` : ""}</div></div>` : ""}
-    </div>` : ""}
+    ${askCvCard(c)}
     ${hasInterview ? `<div class="card" style="margin-top:24px">${cardHead("calendar-check", "green", "Interview", c.questions_source ? sourceTag(c.questions_source === "AI" ? "Questions by AI" : c.questions_source) : "")}
       <div class="grid two" style="gap:20px"><div><div class="field"><div class="label">Date and time</div><div class="value">${esc(c.interview_label || "-")} ${ROLE === "hr" && ["invite_ready", "awaiting_result", "on_hold"].includes(c.status) ? `<button class="btn ghost small" data-act="change-slot" data-cur="${esc(c.interview_at || "")}">${icon("pencil", "sm")} Change slot</button>` : ""}</div></div>
         <div class="field"><div class="label">Result</div><div class="value">${c.result ? `<span class="chip ${c.result === "Pass" ? "green" : c.result === "Fail" ? "red" : "amber"}">${esc(c.result)}</span> <span class="small muted">${esc(fmtTime(c.result_at))} - decided by the interviewer</span>` : `<span class="muted">Not entered yet</span>`}</div></div>
@@ -619,10 +624,13 @@ async function pInterview(appNo) {
         <div class="field"><div class="label">Skills</div><div class="chips">${(p.skills || []).map((s) => `<span class="chip gray">${esc(s)}</span>`).join("") || "-"}</div></div>
         <div class="field"><div class="label">Projects</div><ul class="clean">${(p.projects || []).map((x) => `<li>${esc(x)}</li>`).join("") || "<li>-</li>"}</ul></div>
         ${c.gaps.length ? `<div class="field"><div class="label">Skill gaps for ${esc(c.area)}</div><div class="chips">${c.gaps.map((g) => `<span class="chip red">${esc(g)}</span>`).join("")}</div></div>` : ""}
-        <div class="actions" style="margin-top:14px"><a class="btn small" href="/api/candidates/${encodeURIComponent(c.app_no)}/cv">${icon("download", "sm")} Download CV</a></div></div>
+        <div class="actions" style="margin-top:14px"><button class="btn small" data-act="toggle-cv">${icon("eye", "sm")} ${UI.showCv ? "Hide" : "Show"} the CV text</button><a class="btn small" href="/api/candidates/${encodeURIComponent(c.app_no)}/cv">${icon("download", "sm")} Download CV</a></div>
+        ${UI.showCv ? `<div class="cvtext" style="margin-top:12px">${esc(c.cv_text)}</div>` : ""}</div>
+      ${askCvCard(c)}
     </div><div class="stack">
       <div class="card">${cardHead("award", "green", "Your result")}${form}</div>
     </div></div>`);
+  view.dataset.app = c.app_no;
 }
 
 // ================================================================ actions (one click handler for every button)

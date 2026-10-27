@@ -12,4 +12,6 @@ if ! command -v llama-server >/dev/null 2>&1; then
 fi
 echo "Starting $MODEL on http://127.0.0.1:$PORT"
 echo "Wait until you see that the server is listening, then start the app in another terminal."
-exec llama-server -hf "$MODEL" --host 127.0.0.1 --port "$PORT" -c 8192
+# Use 1 slot (-np 1), skip the unused vision projector (--no-mmproj), and enable Flash Attention (-fa on)
+# for much faster generation and lower memory use on Apple Silicon Macs.
+exec llama-server -hf "$MODEL" --host 127.0.0.1 --port "$PORT" -c 4096 -np 1 --no-mmproj -fa on
