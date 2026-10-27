@@ -446,7 +446,7 @@ async function pCandidate(appNo) {
     </div>
     ${askCvCard(c)}
     ${hasInterview ? `<div class="card" style="margin-top:24px">${cardHead("calendar-check", "green", "Interview", c.questions_source ? sourceTag(c.questions_source === "AI" ? "Questions by AI" : c.questions_source) : "")}
-      <div class="grid two" style="gap:20px"><div><div class="field"><div class="label">Date and time</div><div class="value">${esc(c.interview_label || "-")} ${ROLE === "hr" && ["invite_ready", "awaiting_result", "on_hold"].includes(c.status) ? `<button class="btn ghost small" data-act="change-slot" data-cur="${esc(c.interview_at || "")}">${icon("pencil", "sm")} Change slot</button>` : ""}</div></div>
+      <div class="grid two" style="gap:20px"><div><div class="field"><div class="label">Date and time</div><div class="value">${esc(c.interview_label || "-")} ${ROLE === "hr" && ["invite_ready", "awaiting_result"].includes(c.status) ? `<button class="btn ghost small" data-act="change-slot" data-cur="${esc(c.interview_at || "")}">${icon("pencil", "sm")} Change slot</button>` : ""}</div></div>
         <div class="field"><div class="label">Result</div><div class="value">${c.result ? `<span class="chip ${c.result === "Pass" ? "green" : c.result === "Fail" ? "red" : "amber"}">${esc(c.result)}</span> <span class="small muted">${esc(fmtTime(c.result_at))} - decided by the interviewer</span>` : `<span class="muted">Not entered yet</span>`}</div></div>
         ${c.result_comment ? `<div class="field"><div class="label">Interviewer's comment</div><div class="value">${esc(c.result_comment)}</div></div>` : ""}</div>
         <div><div class="label">Questions for the interviewer</div>${c.questions.length ? `<ol class="clean">${c.questions.map((q) => `<li>${esc(q)}</li>`).join("")}</ol>` : `<span class="muted">-</span>`}</div></div></div>` : ""}
@@ -630,7 +630,6 @@ async function pInterview(appNo) {
     </div><div class="stack">
       <div class="card">${cardHead("award", "green", "Your result")}${form}</div>
     </div></div>`);
-  view.dataset.app = c.app_no;
 }
 
 // ================================================================ actions (one click handler for every button)

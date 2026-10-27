@@ -41,8 +41,7 @@ def _prepare(messages: list[dict]) -> list[dict]:
     return rest
 
 
-def chat(messages: list[dict], json_mode: bool = True, max_tokens: int | None = None,
-         strict_grammar: bool = False) -> str:
+def chat(messages: list[dict], json_mode: bool = True, max_tokens: int | None = None) -> str:
     """Send one chat request and return the model's text."""
     global _json_mode_supported
     if _backend is not None:
@@ -54,9 +53,7 @@ def chat(messages: list[dict], json_mode: bool = True, max_tokens: int | None = 
         "max_tokens": max_tokens or config.MODEL_MAX_TOKENS,
         "stream": False,
     }
-    # Only attach llama-server's GBNF response_format grammar when requested (e.g. on retry),
-    # because evaluating a generic JSON grammar over Gemma 3's 262k vocabulary adds heavy CPU overhead.
-    if json_mode and strict_grammar and _json_mode_supported:
+    if json_mode and _json_mode_supported:
         payload["response_format"] = {"type": "json_object"}
     url = f"{config.MODEL_URL}/v1/chat/completions"
     try:

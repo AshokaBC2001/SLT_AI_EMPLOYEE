@@ -6,6 +6,7 @@ status first, so an action can only happen at the right moment.
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from pathlib import Path
 
 from sqlalchemy import func, select
@@ -210,12 +211,16 @@ def free_interview_slots(count: int = 21) -> list[dict[str, str]]:
 def reschedule_interview(app_no: str, slot_iso: str) -> dict:
     """Move a candidate's interview to another free slot and update any waiting invitation email."""
     c = _candidate(app_no)
-    _need(c, {"invite_ready", "awaiting_result", "on_hold"}, "Changing the interview slot")
+    _need(c, {"invite_ready", "awaiting_result"}, "Changing the interview slot")
     slot_iso = (slot_iso or "").strip()
     try:
         label = tools.format_slot_label(slot_iso)
+        when = datetime.fromisoformat(slot_iso)
     except ValueError as e:
         raise ActionError("Invalid interview date and time.") from e
+    # Same rules as the Coordinator: a future working day, at one of the set interview times.
+    if when <= datetime.now() or when.weekday() >= 5 or when.strftime("%H:%M") not in config.INTERVIEW_TIMES:
+        raise ActionError("Choose one of the free interview slots on a coming working day.")
     with db.Session() as s:
         clash = s.scalar(select(db.Candidate).where(db.Candidate.interview_at == slot_iso,
                                                     db.Candidate.id != c.id))
@@ -236,6 +241,12 @@ def reschedule_interview(app_no: str, slot_iso: str) -> dict:
             _, problems = checks.check_draft({"subject": d.subject, "body": d.body}, facts,
                                              [m for m in (cand.area, label) if m])
             d.check_notes = problems
+        # The invitation was already released, so the student still has the old time.
+        if cand.status == "awaiting_result":
+            cand.flags = list(cand.flags or []) + [{
+                "text": f"Interview moved from {old_label} to {label}. The invitation with the old time was "
+                        "already released, so tell the student about the new time.",
+                "by": "System", "at": db.now(), "open": True}]
         s.commit()
     db.log_event(c.id, "HR officer", f"Changed the interview slot to {label}.")
     return {"interview_at": slot_iso, "interview_label": label}

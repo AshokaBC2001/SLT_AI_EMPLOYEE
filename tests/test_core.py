@@ -393,3 +393,43 @@ def test_brief_check_rejects_placeholders_and_emails():
     assert "placeholder" in text and "email" in text
 
 
+
+def test_reschedule_refuses_bad_slots_and_flags_released_invitations(fake):
+    a = add("kavindu_perera.txt")
+    flows.run_all_once()
+    # Past dates, weekends and times outside the interview grid are refused.
+    for bad in ("2020-01-06T09:30", "2099-01-03T09:30", "2099-01-05T08:00", "not a date"):
+        with pytest.raises(actions.ActionError):
+            actions.reschedule_interview(a, bad)
+    # After the invitation is released, moving the slot leaves a note to tell the student.
+    _release_waiting(a)
+    slot = actions.free_interview_slots(count=3)[2]
+    actions.reschedule_interview(a, slot["iso"])
+    assert any("tell the student" in f["text"] and f["open"] for f in cand(a).flags)
+
+
+def test_quotes_are_cleaned_of_extra_marks():
+    data = {"answer": "The student built a churn model with Scikit-learn and Pandas.",
+            "quotes": ['"built a classification model with Scikit-learn and Pandas"', "- Customer churn prediction"]}
+    clean, problems = checks.check_cv_answer(data, CV)
+    assert problems == []
+    assert clean["quotes"][0].startswith("built") and clean["quotes"][1].startswith("Customer")
+
+
+def test_ask_cv_does_not_wait_while_the_ai_team_is_busy(fake):
+    a = add("kavindu_perera.txt")
+    flows.run_employee("recruiter", wait=True)
+    assert flows.WORK_LOCK.acquire(timeout=1)
+    try:
+        ans = actions.ask_cv(a, "Does the CV mention Python?")
+    finally:
+        flows.WORK_LOCK.release()
+    assert "busy" in ans["source"] and ans["quotes"]
+
+
+def test_csv_cells_cannot_run_as_formulas():
+    from hiring.server import _csv_safe
+    assert _csv_safe('=HYPERLINK("http://x")') == '\'=HYPERLINK("http://x")'
+    assert _csv_safe("@SUM(A1)") == "'@SUM(A1)"
+    assert _csv_safe("Kavindu Perera") == "Kavindu Perera"
+    assert _csv_safe(72) == 72

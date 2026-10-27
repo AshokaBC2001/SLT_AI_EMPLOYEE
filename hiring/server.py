@@ -203,6 +203,14 @@ def list_candidates(status: str = "", q: str = ""):
     return [summary(c) for c in _query_candidates(status, q)]
 
 
+def _csv_safe(value):
+    """Names and emails come from uploaded CVs. A cell starting with = + - or @ would run as a
+    formula in Excel or Sheets, so it is prefixed with ' to keep it as plain text."""
+    if isinstance(value, str) and value[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + value
+    return value
+
+
 @app.get("/api/candidates.csv")
 def export_candidates_csv(status: str = "", q: str = ""):
     """Download the candidate register (or the current filtered view) as a CSV spreadsheet."""
@@ -213,11 +221,11 @@ def export_candidates_csv(status: str = "", q: str = ""):
                      "Interview Slot", "Result", "Work ID", "Outcome", "Created At"])
     for c in rows:
         label, _, _ = config.STATUSES.get(c.status, (c.status, "gray", ""))
-        writer.writerow([c.app_no, c.name, c.email, c.area,
+        writer.writerow([_csv_safe(v) for v in (c.app_no, c.name, c.email, c.area,
                          "" if c.score is None else c.score, label,
                          c.interview_label, c.result,
                          "" if c.work_id is None else c.work_id,
-                         c.outcome, c.created_at])
+                         c.outcome, c.created_at)])
     return Response(content=buf.getvalue(), media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": 'attachment; filename="slt_candidates.csv"'})
 

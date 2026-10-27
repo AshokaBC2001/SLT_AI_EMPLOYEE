@@ -162,8 +162,7 @@ def ask_checked(key: str, routine: str, task_text: str,
     calls = 0
     problems: list[str] = []
     for attempt in range(1 + config.MAX_FIXES):
-        # Skip strict GBNF grammar on attempt 0 for 2x+ faster generation; enable it if a retry is needed.
-        text = llm.chat(messages, json_mode=True, max_tokens=max_tokens, strict_grammar=(attempt > 0))
+        text = llm.chat(messages, json_mode=True, max_tokens=max_tokens)
         calls += 1
         try:
             data = parse_json_object(text)

@@ -707,6 +707,12 @@ def run_all_once(limit: int = 20) -> list[dict]:
 
 def ask_candidate_cv(cid: int, cv_text: str, profile: dict, question: str) -> dict:
     """Answer a user question grounded strictly in the candidate's CV text."""
+    # Only one model job runs at a time. If an employee is busy with the model, answer
+    # straight away from the CV by plain rules instead of making the person wait minutes.
+    if not WORK_LOCK.acquire(timeout=2):
+        val = tools.rule_answer_cv(question, cv_text, profile)
+        return {"question": question, "answer": val["answer"], "quotes": val["quotes"],
+                "source": "CV search (rules, the AI team is busy)"}
     started = time.time()
     task = f"QUESTION:\n{question}\n\n" + _cv_block(cv_text)
     try:
@@ -727,6 +733,8 @@ def ask_candidate_cv(cid: int, cv_text: str, profile: dict, question: str) -> di
     except llm.ModelUnavailable:
         val = tools.rule_answer_cv(question, cv_text, profile)
         return {"question": question, "answer": val["answer"], "quotes": val["quotes"], "source": "CV search (rules)"}
+    finally:
+        WORK_LOCK.release()
 
 
 def start_background(fn, *args) -> None:
