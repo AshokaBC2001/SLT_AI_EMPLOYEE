@@ -84,3 +84,26 @@ def test_review_lists_decisions_and_suggested_areas(client):
     assert any(s["name"] == "Human Resources" for s in r["suggested_areas"])
     team = client.get("/api/team").json()
     assert len(team["employees"]) == 4
+
+
+def test_csv_export_reschedule_checklist_and_release_all(client):
+    client.post("/api/samples", headers=HR)
+    flows.run_all_once()
+    slots = client.get("/api/slots").json()["slots"]
+    assert len(slots) > 2
+    rows = client.get("/api/candidates?status=release").json()
+    app_no = rows[0]["app_no"]
+    r_slot = client.post(f"/api/candidates/{app_no}/slot", headers=HR, json={"slot_iso": slots[0]["iso"]})
+    assert r_slot.status_code == 200 and r_slot.json()["interview_label"] == slots[0]["label"]
+    r_rel = client.post("/api/drafts/release-all", headers=HR).json()
+    assert r_rel["released"] >= 4
+    client.post(f"/api/candidates/{app_no}/result", headers=IN, json={"result": "Pass", "comment": "Strong"})
+    flows.run_all_once()
+    r_chk = client.post(f"/api/candidates/{app_no}/checklist/0/toggle", headers=HR)
+    assert r_chk.status_code == 200 and r_chk.json()["checklist"][0]["done"] is True
+    selected = client.get("/api/candidates?status=selected").json()
+    assert len(selected) == 1 and selected[0]["app_no"] == app_no
+    csv_resp = client.get("/api/candidates.csv?status=selected")
+    assert csv_resp.status_code == 200 and "text/csv" in csv_resp.headers["content-type"]
+    assert app_no in csv_resp.text and "1001" in csv_resp.text
+

@@ -200,18 +200,32 @@ def best_area_by_rules(profile: dict, cv_text: str, areas: list) -> tuple[str, i
 
 
 # ---- Interview slots -------------------------------------------------------------------
-def pick_interview_slot(taken: set[str], today: date | None = None) -> tuple[str, str]:
-    """Next free slot on a working day, starting tomorrow. Returns (iso, label)."""
+def format_slot_label(iso: str) -> str:
+    dt = datetime.fromisoformat(iso)
+    return f"{dt.strftime('%A')} {dt.day} {dt.strftime('%B %Y')} at {dt.strftime('%H:%M')}"
+
+
+def upcoming_interview_slots(taken: set[str], count: int = 21, today: date | None = None) -> list[dict[str, str]]:
+    """Next free slots on working days, starting tomorrow. Returns [{'iso': ..., 'label': ...}]."""
+    out: list[dict[str, str]] = []
     day = (today or date.today()) + timedelta(days=1)
     for _ in range(60):
         if day.weekday() < 5:
             for t in config.INTERVIEW_TIMES:
                 iso = f"{day.isoformat()}T{t}"
                 if iso not in taken:
-                    dt = datetime.fromisoformat(iso)
-                    label = f"{dt.strftime('%A')} {dt.day} {dt.strftime('%B %Y')} at {t}"
-                    return iso, label
+                    out.append({"iso": iso, "label": format_slot_label(iso)})
+                    if len(out) >= count:
+                        return out
         day += timedelta(days=1)
+    return out
+
+
+def pick_interview_slot(taken: set[str], today: date | None = None) -> tuple[str, str]:
+    """Next free slot on a working day, starting tomorrow. Returns (iso, label)."""
+    slots = upcoming_interview_slots(taken, count=1, today=today)
+    if slots:
+        return slots[0]["iso"], slots[0]["label"]
     raise RuntimeError("No free interview slots in the next 60 days.")
 
 

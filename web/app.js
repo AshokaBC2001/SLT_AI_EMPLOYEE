@@ -19,7 +19,7 @@ if (!["hr", "interviewer"].includes(ROLE)) ROLE = "hr";
 let STATE = null;
 let lastHTML = "";
 let current = { page: "", arg: "" };
-const UI = { showCv: false, showRuns: false, editDraft: null, editEmail: false, candFilter: "selected", candQuery: "",
+const UI = { showCv: false, showRuns: false, editDraft: null, editEmail: false, candFilter: "", candQuery: "",
              repliesTab: "waiting", showAll: "", files: [], uploadResults: null, areas: null };
 
 async function api(path, { method = "GET", body, form } = {}) {
@@ -321,15 +321,15 @@ function addFiles(list) {
   pAdd();
 }
 
-const FILTERS = [["selected", "Selected candidates"], ["", "All"], ["new", "New"], ["interview", "In interview"], ["closed", "Closed"], ["review", "Needs you"], ["release", "Emails to release"]];
+const FILTERS = [["", "All"], ["selected", "Selected candidates"], ["new", "New"], ["interview", "In interview"], ["closed", "Closed"], ["review", "Needs you"], ["release", "Emails to release"]];
 async function pCandidates(arg) {
   title("Candidates");
   if (arg !== undefined && arg !== "" && FILTERS.some((f) => f[0] === arg)) UI.candFilter = arg;
   const selected = UI.candFilter === "selected";
-  let rows = await api(`/api/candidates?status=${selected ? "" : encodeURIComponent(UI.candFilter)}`);
-  if (selected) rows = rows.filter((c) => c.result === "Pass");   // passed the interview
+  let rows = await api(`/api/candidates?status=${encodeURIComponent(UI.candFilter)}`);
   const q = UI.candQuery.toLowerCase();
   const shown = q ? rows.filter((c) => [c.name, c.app_no, c.area, c.email].join(" ").toLowerCase().includes(q)) : rows;
+  const csvUrl = `/api/candidates.csv?status=${encodeURIComponent(UI.candFilter)}&q=${encodeURIComponent(UI.candQuery)}`;
   const body = shown.length ? `<table class="list"><thead><tr><th>Application</th><th>Student</th><th>Area</th><th>Score</th><th>Status</th><th>Next</th></tr></thead><tbody>
     ${shown.map((c) => `<tr class="click" data-href="#/candidate/${encodeURIComponent(c.app_no)}">
       <td><b>${esc(c.app_no)}</b><div class="small muted">${esc(fmtTime(c.created_at))}</div></td>
@@ -339,7 +339,7 @@ async function pCandidates(arg) {
       <td>${chip(c)} ${c.open_flags ? `<span class="chip amber" title="Notes to check">${icon("triangle-alert", "sm")}${esc(c.open_flags)}</span>` : ""}</td>
       <td class="small muted">${esc(c.next_actor || (c.outcome || "Done"))}</td></tr>`).join("")}</tbody></table>`
     : empty(rows.length ? "No candidate matches your search." : selected ? "No one has passed an interview yet." : "No candidates here.", "users");
-  setView(`<div class="card">${cardHead("users", "blue", "Candidates", `<a class="btn primary" href="#/add">${icon("file-plus")} Add CV</a>`)}
+  setView(`<div class="card">${cardHead("users", "blue", "Candidates", `<div class="actions"><a class="btn small" href="${csvUrl}">${icon("download", "sm")} Export CSV</a><a class="btn primary" href="#/add">${icon("file-plus")} Add CV</a></div>`)}
     <div class="filters"><div class="seg">${FILTERS.map(([k, l]) => `<button class="${UI.candFilter === k ? "on" : ""}" data-act="filter" data-f="${k}">${esc(l)}</button>`).join("")}</div>
     <div class="search">${icon("search", "sm")}<input type="search" id="cand-q" placeholder="Search name, number, area" value="${esc(UI.candQuery)}"></div></div>${body}</div>`);
   const qi = $("#cand-q");
@@ -418,14 +418,14 @@ async function pCandidate(appNo) {
         ${c.gaps.length ? `<div class="field"><div class="label">Skill gaps</div><div class="chips">${c.gaps.map((g) => `<span class="chip red">${esc(g)}</span>`).join("")}</div></div>` : ""}</div>
     </div>
     ${hasInterview ? `<div class="card" style="margin-top:24px">${cardHead("calendar-check", "green", "Interview", c.questions_source ? sourceTag(c.questions_source === "AI" ? "Questions by AI" : c.questions_source) : "")}
-      <div class="grid two" style="gap:20px"><div><div class="field"><div class="label">Date and time</div><div class="value">${esc(c.interview_label || "-")}</div></div>
+      <div class="grid two" style="gap:20px"><div><div class="field"><div class="label">Date and time</div><div class="value">${esc(c.interview_label || "-")} ${ROLE === "hr" && ["invite_ready", "awaiting_result", "on_hold"].includes(c.status) ? `<button class="btn ghost small" data-act="change-slot" data-cur="${esc(c.interview_at || "")}">${icon("pencil", "sm")} Change slot</button>` : ""}</div></div>
         <div class="field"><div class="label">Result</div><div class="value">${c.result ? `<span class="chip ${c.result === "Pass" ? "green" : c.result === "Fail" ? "red" : "amber"}">${esc(c.result)}</span> <span class="small muted">${esc(fmtTime(c.result_at))} - decided by the interviewer</span>` : `<span class="muted">Not entered yet</span>`}</div></div>
         ${c.result_comment ? `<div class="field"><div class="label">Interviewer's comment</div><div class="value">${esc(c.result_comment)}</div></div>` : ""}</div>
         <div><div class="label">Questions for the interviewer</div>${c.questions.length ? `<ol class="clean">${c.questions.map((q) => `<li>${esc(q)}</li>`).join("")}</ol>` : `<span class="muted">-</span>`}</div></div></div>` : ""}
     ${c.drafts.length ? `<div class="card" id="emails" style="margin-top:24px">${cardHead("mail", "amber", "Emails", `<span class="hint">Nothing is sent without your release</span>`)}<div class="rows">${c.drafts.slice().reverse().map((d) => mailBlock(d)).join("")}</div></div>` : ""}
-    ${c.work_id ? `<div class="card" style="margin-top:24px">${cardHead("id-card", "green", "Onboarding")}
+    ${c.work_id ? `<div class="card" style="margin-top:24px">${cardHead("id-card", "green", "Onboarding", c.checklist.length ? `<span class="chip ${c.checklist.every((i) => i.done) ? "green" : "gray"}">${c.checklist.filter((i) => i.done).length} of ${c.checklist.length} done</span>` : "")}
       <div class="grid two" style="gap:20px"><div><div class="label">Work ID</div><div style="font-size:44px;font-weight:700;letter-spacing:.04em">${esc(c.work_id)}</div><div class="small muted">Issued by plain code after the Pass. Never reused.</div></div>
-      <div><div class="label">Induction checklist</div>${c.checklist.length ? `<div class="rows">${c.checklist.map((i) => `<div class="routine">${icon("circle-check", "sm")}<span>${esc(i.item)}</span></div>`).join("")}</div>` : `<span class="muted">Being prepared</span>`}</div></div></div>` : ""}
+      <div><div class="label">Induction checklist</div>${c.checklist.length ? `<div class="rows">${c.checklist.map((i, idx) => `<div class="routine ${ROLE === "hr" ? "click" : ""}" ${ROLE === "hr" ? `data-act="toggle-check" data-i="${idx}"` : ""} style="align-items:center;cursor:${ROLE === "hr" ? "pointer" : "default"}"><span style="color:var(${i.done ? "--green-ink" : "--faint"})">${icon(i.done ? "circle-check" : "clock", "sm")}</span><span class="grow" style="${i.done ? "text-decoration:line-through;color:var(--muted)" : ""}">${esc(i.item)}</span>${ROLE === "hr" ? `<span class="small muted">${i.done ? "Done" : "Mark done"}</span>` : ""}</div>`).join("")}</div>` : `<span class="muted">Being prepared</span>`}</div></div></div>` : ""}
     <div class="card" style="margin-top:24px">${cardHead("activity", "purple", "Timeline", `<button class="btn small" data-act="toggle-runs">${UI.showRuns ? "Hide" : "Show"} AI steps</button>`)}
       <div class="timeline">${c.events.slice().reverse().map((e) => `<div class="tl"><time>${esc(fmtTime(e.at))}</time><div>${actorTag(e.actor)} <span style="margin-left:6px">${esc(e.text)}</span></div></div>`).join("")}</div>
       ${UI.showRuns ? `<table class="list" style="margin-top:14px"><thead><tr><th>Time</th><th>Employee</th><th>Routine</th><th>Outcome</th><th>Model calls</th><th>Seconds</th></tr></thead><tbody>
@@ -460,7 +460,11 @@ async function pReplies(arg) {
   title("Replies");
   if (arg === "released" || arg === "waiting") UI.repliesTab = arg;
   const drafts = await api(`/api/drafts?state=${UI.repliesTab}`);
-  setView(`<div class="card">${cardHead("mail", "amber", "Emails drafted by the AI team", `<div class="seg"><button class="${UI.repliesTab === "waiting" ? "on" : ""}" data-act="tab" data-t="waiting">Waiting for release</button><button class="${UI.repliesTab === "released" ? "on" : ""}" data-act="tab" data-t="released">Released</button></div>`)}
+  const readyCount = UI.repliesTab === "waiting" ? drafts.filter((d) => d.can_release).length : 0;
+  const releaseAllBtn = readyCount > 1 && ROLE === "hr"
+    ? `<button class="btn primary small" data-act="release-all" data-n="${readyCount}">${icon("send", "sm")} Release all ready (${readyCount})</button>`
+    : "";
+  setView(`<div class="card">${cardHead("mail", "amber", "Emails drafted by the AI team", `<div class="actions">${releaseAllBtn}<div class="seg"><button class="${UI.repliesTab === "waiting" ? "on" : ""}" data-act="tab" data-t="waiting">Waiting for release</button><button class="${UI.repliesTab === "released" ? "on" : ""}" data-act="tab" data-t="released">Released</button></div></div>`)}
     <p class="muted small" style="margin-top:-6px">Read each email, edit it if needed, then release it. In this prototype a released email is saved in the data/outbox folder. Nothing is sent.</p>
     <div class="rows">${drafts.length ? drafts.map((d) => mailBlock(d, { showCandidate: true })).join("") : empty(UI.repliesTab === "waiting" ? "No emails are waiting for release." : "No emails released yet.", "mail")}</div></div>`);
 }
@@ -637,6 +641,26 @@ const ACTS = {
     act(() => api(`/api/candidates/${encodeURIComponent(current.arg)}/close`, { method: "POST" }), "Application closed.");
   },
   "resolve": (b) => act(() => api(`/api/candidates/${encodeURIComponent(b.dataset.app || current.arg)}/flags/${b.dataset.i}/resolve`, { method: "POST" }), "Marked as checked."),
+  "toggle-check": (b) => act(() => api(`/api/candidates/${encodeURIComponent(current.arg)}/checklist/${b.dataset.i}/toggle`, { method: "POST" })),
+  "change-slot": async () => {
+    try {
+      const r = await api("/api/slots");
+      const slots = r.slots || [];
+      if (!slots.length) { toast("No free interview slots available.", true); return; }
+      openDialog(`<h3>Change interview slot</h3><p class="muted small">Pick a free 45-minute slot on a working day. If the invitation email has not been released yet, its date and time will be updated automatically.</p>
+        <div class="form-row"><label for="slot-pick">Available slots</label>
+          <select id="slot-pick">${slots.map((s) => `<option value="${esc(s.iso)}">${esc(s.label)}</option>`).join("")}</select></div>
+        <div class="actions"><button class="btn" data-dlg="cancel">Cancel</button><button class="btn primary" data-dlg="save">${icon("check")} Save slot</button></div>`);
+      const d = $("#dialog");
+      d.querySelector('[data-dlg="cancel"]').onclick = closeDialog;
+      d.querySelector('[data-dlg="save"]').onclick = async () => {
+        const slot_iso = $("#slot-pick").value;
+        closeDialog();
+        await act(() => api(`/api/candidates/${encodeURIComponent(current.arg)}/slot`, { method: "POST", body: { slot_iso } }),
+          (res) => `Interview moved to ${res.interview_label}.`);
+      };
+    } catch (e) { toast(e.message, true); }
+  },
   "edit-draft": (b) => { UI.editDraft = +b.dataset.id; lastHTML = ""; render(); },
   "cancel-edit": () => { UI.editDraft = null; lastHTML = ""; render(); },
   "save-draft": async (b) => {
@@ -650,6 +674,11 @@ const ACTS = {
   "release": async (b) => {
     if (!(await confirmBox({ heading: `Release the ${b.dataset.kind}?`, text: `To ${b.dataset.name}. In this prototype the email is saved to the outbox folder, not sent.`, ok: "Release" }))) return;
     act(() => api(`/api/drafts/${b.dataset.id}/release`, { method: "POST" }), "Released.");
+  },
+  "release-all": async (b) => {
+    const n = b.dataset.n || "all";
+    if (!(await confirmBox({ heading: `Release ${n} ready email(s)?`, text: "Each ready email will be saved to the outbox folder (not sent) and its candidate will move to the next step.", ok: "Release all" }))) return;
+    act(() => api("/api/drafts/release-all", { method: "POST" }), (r) => `Released ${r.released} email(s).`);
   },
   "jump": (b, e) => { e.preventDefault(); $("#emails")?.scrollIntoView({ behavior: "smooth" }); },
   "area-new": (b) => areaForm(null, b.dataset.name || ""),

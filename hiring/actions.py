@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from . import checks, config, db, tools
 
@@ -101,7 +101,13 @@ def set_email(app_no: str, email: str) -> None:
     email = (email or "").strip()
     if not checks.EMAIL_RE.fullmatch(email):
         raise ActionError(f'"{email}" is not a valid email address.')
-    flags = _resolve_flags(c, ("No email address", "The email typed by the HR officer"))
+    flags = _resolve_flags(c, ("No email address", "The email typed by the HR officer", "Possible duplicate:"))
+    with db.Session() as s:
+        other = s.scalar(select(db.Candidate).where(func.lower(db.Candidate.email) == email.lower(),
+                                                    db.Candidate.id != c.id))
+    if other is not None:
+        flags.append({"text": f"Possible duplicate: {other.app_no} has the same email.",
+                      "by": "System", "at": db.now(), "open": True})
     db.update_candidate(c.id, email=email, email_source="Typed by HR officer", flags=flags)
     db.log_event(c.id, "HR officer", f"Set the email to {email}.")
 
@@ -178,6 +184,56 @@ def resolve_flag(app_no: str, index: int) -> None:
     flags[index]["resolved_at"] = db.now()
     db.update_candidate(c.id, flags=flags)
     db.log_event(c.id, "HR officer", f"Marked as checked: {flags[index]['text'][:120]}")
+
+
+def toggle_checklist(app_no: str, index: int) -> list[dict]:
+    c = _candidate(app_no)
+    items = [dict(item) for item in (c.checklist or [])]
+    if not 0 <= index < len(items):
+        raise ActionError("Unknown checklist item.")
+    items[index]["done"] = not bool(items[index].get("done"))
+    db.update_candidate(c.id, checklist=items)
+    state_word = "Completed" if items[index]["done"] else "Reopened"
+    db.log_event(c.id, "HR officer", f"{state_word} checklist item: {items[index].get('item', '')[:120]}")
+    return items
+
+
+def free_interview_slots(count: int = 21) -> list[dict[str, str]]:
+    with db.Session() as s:
+        taken = {x for x in s.scalars(select(db.Candidate.interview_at).where(db.Candidate.interview_at != ""))}
+    return tools.upcoming_interview_slots(taken, count=count)
+
+
+def reschedule_interview(app_no: str, slot_iso: str) -> dict:
+    c = _candidate(app_no)
+    _need(c, {"invite_ready", "awaiting_result", "on_hold"}, "Changing the interview slot")
+    slot_iso = (slot_iso or "").strip()
+    try:
+        label = tools.format_slot_label(slot_iso)
+    except ValueError as e:
+        raise ActionError("Invalid interview date and time.") from e
+    with db.Session() as s:
+        clash = s.scalar(select(db.Candidate).where(db.Candidate.interview_at == slot_iso,
+                                                    db.Candidate.id != c.id))
+        if clash is not None:
+            raise ActionError(f"That slot is already booked for {clash.app_no}.")
+        cand = s.get(db.Candidate, c.id)
+        old_label = cand.interview_label
+        cand.interview_at = slot_iso
+        cand.interview_label = label
+        cand.updated_at = db.now()
+        drafts = list(s.scalars(select(db.Draft).where(
+            db.Draft.candidate_id == c.id, db.Draft.kind == "invitation", db.Draft.status == "waiting")))
+        for d in drafts:
+            if old_label and old_label in d.body:
+                d.body = d.body.replace(old_label, label)
+            facts, _, _ = _draft_facts(cand)
+            _, problems = checks.check_draft({"subject": d.subject, "body": d.body}, facts,
+                                             [m for m in (cand.area, label) if m])
+            d.check_notes = problems
+        s.commit()
+    db.log_event(c.id, "HR officer", f"Changed the interview slot to {label}.")
+    return {"interview_at": slot_iso, "interview_label": label}
 
 
 # ---- Interviewer -------------------------------------------------------------------------
@@ -261,6 +317,27 @@ def release_draft(draft_id: int) -> str:
         cid, label = c.id, KIND_LABELS[d.kind]
     db.log_event(cid, "HR officer", f"Released the {label}. It was saved to the outbox (not sent).")
     return after
+
+
+def release_all_ready() -> dict:
+    with db.Session() as s:
+        rows = list(s.execute(select(db.Draft, db.Candidate)
+                              .join(db.Candidate, db.Candidate.id == db.Draft.candidate_id)
+                              .where(db.Draft.status == "waiting")
+                              .order_by(db.Draft.id)).all())
+    released = 0
+    skipped = 0
+    for d, c in rows:
+        before = RELEASE_MOVES.get(d.kind, ("", "", ""))[0]
+        if c.status == before and c.email and checks.EMAIL_RE.fullmatch(c.email):
+            try:
+                release_draft(d.id)
+                released += 1
+            except ActionError:
+                skipped += 1
+        else:
+            skipped += 1
+    return {"released": released, "skipped": skipped}
 
 
 # ---- Areas (HR officer) --------------------------------------------------------------------

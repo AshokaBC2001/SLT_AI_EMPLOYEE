@@ -6,12 +6,14 @@ that come from other websites. Two roles use it, chosen at the top of the page:
 """
 from __future__ import annotations
 
+import csv
+import io
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
 
@@ -157,14 +159,15 @@ def state():
     }
 
 
-@app.get("/api/candidates")
-def list_candidates(status: str = "", q: str = ""):
+def _query_candidates(status: str = "", q: str = "") -> list[db.Candidate]:
     with db.Session() as s:
         query = select(db.Candidate).order_by(db.Candidate.id.desc())
         groups = {"interview": {"awaiting_result", "on_hold"}, "working": {"new", "shortlisted", "not_shortlisted",
                   "failed", "hold", "passed"}}
         if status == "review":
             query = query.where(db.Candidate.status.in_(config.HR_STATUSES))
+        elif status == "selected":
+            query = query.where(db.Candidate.result == "Pass")
         elif status in groups:
             query = query.where(db.Candidate.status.in_(groups[status]))
         elif status == "release":
@@ -178,7 +181,35 @@ def list_candidates(status: str = "", q: str = ""):
         ql = q.lower()
         rows = [c for c in rows if ql in (c.name or "").lower() or ql in c.app_no.lower()
                 or ql in (c.area or "").lower() or ql in (c.email or "").lower()]
-    return [summary(c) for c in rows]
+    return rows
+
+
+@app.get("/api/candidates")
+def list_candidates(status: str = "", q: str = ""):
+    return [summary(c) for c in _query_candidates(status, q)]
+
+
+@app.get("/api/candidates.csv")
+def export_candidates_csv(status: str = "", q: str = ""):
+    rows = _query_candidates(status, q)
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["Application No", "Name", "Email", "Area", "Score", "Status",
+                     "Interview Slot", "Result", "Work ID", "Outcome", "Created At"])
+    for c in rows:
+        label, _, _ = config.STATUSES.get(c.status, (c.status, "gray", ""))
+        writer.writerow([c.app_no, c.name, c.email, c.area,
+                         "" if c.score is None else c.score, label,
+                         c.interview_label, c.result,
+                         "" if c.work_id is None else c.work_id,
+                         c.outcome, c.created_at])
+    return Response(content=buf.getvalue(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="slt_candidates.csv"'})
+
+
+@app.get("/api/slots")
+def list_slots():
+    return {"slots": actions.free_interview_slots()}
 
 
 @app.get("/api/candidates/{app_no}")
@@ -371,6 +402,25 @@ def resolve_flag(app_no: str, index: int, request: Request):
     _need_role(request, "hr")
     actions.resolve_flag(app_no, index)
     return {"ok": True}
+
+
+@app.post("/api/candidates/{app_no}/checklist/{index}/toggle")
+def toggle_checklist(app_no: str, index: int, request: Request):
+    _need_role(request, "hr")
+    return {"checklist": actions.toggle_checklist(app_no, index)}
+
+
+@app.post("/api/candidates/{app_no}/slot")
+async def reschedule_slot(app_no: str, request: Request):
+    _need_role(request, "hr")
+    body = await request.json()
+    return actions.reschedule_interview(app_no, body.get("slot_iso", ""))
+
+
+@app.post("/api/drafts/release-all")
+def release_all_drafts(request: Request):
+    _need_role(request, "hr")
+    return actions.release_all_ready()
 
 
 @app.post("/api/drafts/{draft_id}")

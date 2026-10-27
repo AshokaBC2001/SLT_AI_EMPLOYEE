@@ -322,3 +322,36 @@ def test_duplicate_upload_is_refused(fake):
     assert not r["ok"] and "already added" in r["reason"]
     assert not actions.add_cv("cv.exe", b"x")["ok"]
     assert not actions.add_cv("big.txt", b"x" * (config.MAX_UPLOAD_BYTES + 1))["ok"]
+
+
+def test_reschedule_interview_and_checklist_toggle(fake):
+    a = add("kavindu_perera.txt")
+    flows.run_all_once()
+    slots = actions.free_interview_slots(count=5)
+    assert len(slots) == 5
+    new_slot = slots[1]
+    res = actions.reschedule_interview(a, new_slot["iso"])
+    assert res["interview_label"] == new_slot["label"]
+    with db.Session() as s:
+        from sqlalchemy import select
+        d = s.scalar(select(db.Draft).where(db.Draft.candidate_id == cand(a).id, db.Draft.status == "waiting"))
+    assert new_slot["label"] in d.body
+    _release_waiting(a)
+    actions.enter_result(a, "Pass")
+    flows.run_all_once()
+    items = actions.toggle_checklist(a, 0)
+    assert items[0]["done"] is True
+    items = actions.toggle_checklist(a, 0)
+    assert items[0]["done"] is False
+
+
+def test_set_email_flags_duplicate_and_release_all(fake):
+    a = add("kavindu_perera.txt")
+    b = add("sanduni_fernando.txt")
+    flows.run_all_once()
+    actions.set_email(b, "kavindu.perera@example.com")
+    assert any("Possible duplicate" in f["text"] and f["open"] for f in cand(b).flags)
+    res = actions.release_all_ready()
+    assert res["released"] == 2
+    assert cand(a).status == "awaiting_result" and cand(b).status == "awaiting_result"
+

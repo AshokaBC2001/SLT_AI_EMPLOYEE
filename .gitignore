@@ -3,3 +3,6 @@ data/
 __pycache__/
 *.pyc
 screenshots/
+.DS_Store
+.pytest_cache/
+
